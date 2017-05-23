@@ -1,0 +1,14 @@
+# *.lock - this is used and abused by many editors for many different things.
+#    For the main ones I use (e.g. Eclipse), it should be excluded 
+#    from source-control, but YMMV
+*.lock
+
+*.png
+*.mp4
+*.txt
+TsunamiGlobe
+*.grd
+*.kml
+*.pptx
+local/
+*.pyc
