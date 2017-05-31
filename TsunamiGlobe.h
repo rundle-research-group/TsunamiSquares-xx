@@ -55,85 +55,15 @@ namespace tsunamisquares {
     typedef struct FieldDesc FieldDesc;
     typedef std::set<UIndex> SquareIDSet;
 
-    // Vertices that make up a Tsunami Square
-    struct VertexData {
-        UIndex  _id;
-        double   _lat, _lon, _alt;
-    };
-
-    class Vertex : public ModelIO {
-        private:
-            VertexData          _data;
-            Vec<3> _pos;
-
-        public:
-            Vertex(void) {
-                _data._id = INVALID_INDEX;
-                _data._lat = _data._lon = _data._alt = std::numeric_limits<double>::quiet_NaN();
-                _pos = Vec<3>();
-            };
-            
-            void clear(void);
-
-            VertexData data(void) const {
-                return _data;
-            };
-
-            UIndex id(void) const {
-                return _data._id;
-            };
-            void set_id(const UIndex &id) {
-                _data._id = id;
-            };
-
-            LatLonDepth lld(void) const {
-                return LatLonDepth(_data._lat, _data._lon, _data._alt);
-            };
-            void set_lld(const LatLonDepth &lld, const LatLonDepth &base) {
-                Conversion c(base);
-                Vec<3> xyz = c.convert2xyz(lld);
-                _data._lat = lld.lat();
-                _data._lon = lld.lon();
-                _data._alt = lld.altitude();
-                _pos = xyz;
-                // TEMPORARY FIX TO LET (X,Y,Z) = (LON,LAT,ALT)
-                //_pos = Vec<3>(lld.lon(), lld.lat(), lld.altitude());
-            };
-
-            Vec<3> xyz(void) const {
-                return _pos;
-            };
-            Vec<2> xy(void) const {
-                Vec<2> _pos_xy;
-                _pos_xy[0] = _pos[0];
-                _pos_xy[1] = _pos[1];
-                return _pos_xy;
-            };
-            
-            void set_xyz(const Vec<3> &new_xyz, const LatLonDepth &base) {
-                Conversion c(base);
-                LatLonDepth lld = c.convert2LatLon(new_xyz);
-                _pos = new_xyz;
-                _data._lat = lld.lat();
-                _data._lon = lld.lon();
-                _data._alt = lld.altitude();
-            };
-
-            void read_bathymetry(std::istream &in_stream);
-    };
-
     // Squares, the functional members of Tsunami Square
     struct SquareData {
         UIndex              _id;
-        // _vertex for the vertex_id for this square
-        UIndex              _vertex;
+        double              _lat, _lon, _alt;
         Vec<2>              _velocity;
         Vec<2>              _accel;
         double              _height;
         double              _friction;
         double              _density;
-        double              _Lx;
-        double              _Ly;
         bool                _invalid_directions[4];
 
         // updated data are used to keep track of volume/momentum redistribution from other squares
@@ -143,17 +73,22 @@ namespace tsunamisquares {
 
     class Square : public ModelIO {
         private:
-            SquareData         _data;
-            //SquareIDSet        _neighbors;
-            UIndex    _top, _bottom, _right, _left, _top_right, _top_left, _bottom_left, _bottom_right;
+            SquareData     _data;
+            //SquareIDSet    _neighbors;
+            UIndex         _top, _bottom, _right, _left, _top_right, _top_left, _bottom_left, _bottom_right;
+
+            Vec<3> 	       _pos;
+
+            box_spheq      _box;
+
 
         public:
             Square(void) {
                 _data._id = INVALID_INDEX;
-
-                _data._vertex = INVALID_INDEX;
+                _data._lat = _data._lon = _data._alt = std::numeric_limits<double>::quiet_NaN();
+                _pos = Vec<3>();
                 _data._velocity = _data._accel = _data._updated_momentum = Vec<2>(0.0,0.0);
-                _data._height = _data._updated_height = _data._Lx = _data._Ly  = std::numeric_limits<double>::quiet_NaN();
+                _data._height = _data._updated_height = std::numeric_limits<double>::quiet_NaN();
                 _data._density = 1025.0; // sea water by default
                 _data._friction = 0.02;
                 
@@ -178,14 +113,7 @@ namespace tsunamisquares {
             void set_id(const UIndex &id) {
                 _data._id = id;
             };
-            
-            UIndex vertex(void) const {
-                return _data._vertex;
-            };
-            void set_vertex(const UIndex &ind) {
-                _data._vertex = ind;
-            };
-            
+
             double height(void) const {
                 return _data._height;
             };
@@ -226,34 +154,27 @@ namespace tsunamisquares {
             };
             void set_accel(const Vec<2> &new_accel) {
                 _data._accel = new_accel;
-            };
-            
+            }
             double friction(void) const {
                 return _data._friction;
-            };
+            }
             void set_friction(const double &new_friction) {
                 _data._friction = new_friction;
-            };
-            
+            }
+            void set_box(const double &dlon, const double &dlat) {
+            	_box = box_spheq(point_spheq(_pos[0]-dlon, _pos[1]-dlat), point_spheq(_pos[0]+dlon, _pos[1]+dlat));
+            }
+            box_spheq box(void) const {
+            	return _box;
+            }
             double area(void) const {
-                return _data._Lx*_data._Ly;
-            };
-        
-            double Lx(void) const {
-                return _data._Lx;
-            }
-            void set_Lx(const double &new_Lx) {
-                _data._Lx = new_Lx;
-            }
-            double Ly(void) const {
-                return _data._Ly;
-            }
-            void set_Ly(const double &new_Ly) {
-                _data._Ly = new_Ly;
-            }
+            	// bg::area should be returning units of square degrees, so use degree->radian conversion factor twice,
+            	// then earth's radius in meters
+				return bg::area(_box)*(M_PI/180)*(M_PI/180)*EARTH_MEAN_RADIUS;
+			}
 
             double volume(void) const {
-                return _data._Lx*_data._Ly*_data._height;
+                return area()*_data._height;
             };
             
             double mass(void) const {
@@ -390,7 +311,31 @@ namespace tsunamisquares {
                 std::cout << " b left:\t" << bottom_left() << std::endl;
                 std::cout << " b right:\t" << bottom_right() << std::endl;
             }
-            
+
+            LatLonDepth lld(void) const {
+				return LatLonDepth(_data._lat, _data._lon, _data._alt);
+			};
+			void set_lld(const LatLonDepth &lld) {
+				_data._lat = lld.lat();
+				_data._lon = lld.lon();
+				_data._alt = lld.altitude();
+				_pos = Vec<3>(_data._lon, _data._lat, _data._alt);
+				// TEMPORARY FIX TO LET (X,Y,Z) = (LON,LAT,ALT)
+				//_pos = Vec<3>(lld.lon(), lld.lat(), lld.altitude());
+			};
+
+			Vec<3> xyz(void) const {
+				return _pos;
+			};
+			Vec<2> xy(void) const {
+				Vec<2> pos_xy;
+				pos_xy[0] = _pos[0];
+				pos_xy[1] = _pos[1];
+				return pos_xy;
+			};
+
+            void read_bathymetry(std::istream &in_stream);
+
 //            void add_neighbor(const UIndex &neighbor_id) {
 //                _neighbors.insert(neighbor_id);
 //            };
@@ -405,28 +350,21 @@ namespace tsunamisquares {
     // Class to contain all Squares and Bathymetry 
     class World : public ModelIO {
         private:
-            std::map<UIndex, Vertex>   _vertices;
             std::map<UIndex, Square>  _squares;
             LatLonDepth _base;
-            double _min_lat, _max_lat, _min_lon, _max_lon;
+            double _min_lat, _max_lat, _min_lon, _max_lon, _dlat, _dlon;
             int _num_latitudes, _num_longitudes;
-            RTree _square_rtree;
+            RTree_spheq _square_rtree;
             // Diffusion constant
             static const double _D = 140616.45;//100000;
         
         public:
             Square &new_square(void);
-            Vertex &new_vertex(void);
             
             Square &square(const UIndex &ind) throw(std::domain_error);
-            Vertex &vertex(const UIndex &ind) throw(std::domain_error);
             
             UIndex next_square_index(void) const {
                 if (_squares.size()) return _squares.rbegin()->first+1;
-                else return 0;
-            };
-            UIndex next_vertex_index(void) const {
-                if (_vertices.size()) return _vertices.rbegin()->first+1;
                 else return 0;
             };
             
@@ -434,7 +372,6 @@ namespace tsunamisquares {
             size_t num_vertices(void) const;
             
             void insert(Square &new_square);
-            void insert(const Vertex &new_vertex);
             
             void clear(void);
             
@@ -477,9 +414,9 @@ namespace tsunamisquares {
             SquareIDSet getSquareIDs(void) const;
             SquareIDSet getVertexIDs(void) const;
 
-            std::map<double, UIndex> getNearest(const Vec<2> &location) const;
+
             std::map<double, UIndex> getNearest_rtree(const Vec<2> &location, const int &numNear) const;
-            std::map<double, tsunamisquares::UIndex> getNearest_from(const Vec<2> &location, const UIndex &original_id) const;
+            std::vector<UIndex> getRingIntersects_rtree(const ring_spheq &ring) const;
             SquareIDSet getNeighborIDs(const UIndex &square_id) const;
             
             /// Test ///

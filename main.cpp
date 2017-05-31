@@ -233,7 +233,7 @@ int main (int argc, char **argv) {
     std::cout.precision(2+output_num_digits_for_percent);
     std::cout << "Total time: " << (float(end)-float(start))/CLOCKS_PER_SEC << " secs." << std::endl << std::endl;
     return 0;
-}
+}           /* <(^_^<) Happy Coder says: We're good up through this line!*/
 
 /*
     //   == DEFORM A BOWL =======

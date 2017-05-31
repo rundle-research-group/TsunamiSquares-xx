@@ -311,8 +311,8 @@ if __name__ == "__main__":
 #    MODE = "generate"
     MODE = "animate"
 #    MODE = "eq_field_plot"
-#    MODE = "bathy"
-#    MODE = "interp"
+#    MODE = "plot_bathy"
+#    MODE = "gen_bathyfile_interp"
 #    MODE = "eq_field_eval"
     
     if MODE == "generate": #read bethymetry file
@@ -358,12 +358,12 @@ if __name__ == "__main__":
         Levels = [-.3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
         plot_eq_displacements("bathymetry/Channel_Islands_largest_subset_lld_dispField_event39951.txt",Levels, "plots/disp_map.png")
         
-    if MODE == "bathy":
+    if MODE == "plot_bathy":
         #Levels = [-3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
         #bathy_topo_map("local/Channel_Islands.txt",Levels, "bathy_map.png")
         bathy_topo_map("local/Channel_Islands_interp_larger.txt", "bathy_map_interp_larger_imshow.png")
         
-    if MODE == "interp":
+    if MODE == "gen_bathyfile_interp":
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====
         ETOPO1_FILE = "ETOPO1/ETOPO1_Ice_g_gmt4.grd"
         SAVE_NAME = "bathymetry/Channel_Islands_interp_larger_subset_lld.txt"

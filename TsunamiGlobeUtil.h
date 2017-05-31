@@ -32,13 +32,17 @@
 
 #define assertThrow(COND, ERR_MSG) assert(COND);
 
-#ifdef GEOGRAPHICLIB_FOUND
 #include <GeographicLib/Geodesic.hpp>
 #include <GeographicLib/Constants.hpp>
-#endif
+using namespace GeographicLib;
+
 
 #include <boost/geometry.hpp>
+#include <boost/geometry/core/cs.hpp>
 #include <boost/geometry/geometries/point.hpp>
+#include <boost/geometry/geometries/box.hpp>
+#include <boost/geometry/geometries/ring.hpp>
+#include <boost/geometry/geometries/polygon.hpp>
 #include <boost/geometry/index/rtree.hpp>
 #include <boost/foreach.hpp>
 
@@ -533,29 +537,52 @@ namespace tsunamisquares {
             VectorList convertArray2xyz(const DoubleList &lats, const DoubleList &lons) const;
     };
 
-    typedef bg::model::point<float, 2, bg::cs::cartesian> point;
-    typedef std::pair<point, unsigned> value;
 
-    class RTree {
+
+
+    typedef bg::model::point<float, 2, bg::cs::spherical_equatorial<bg::degree> > point_spheq;
+    typedef bg::model::box<point_spheq> box_spheq;
+    typedef std::pair<box_spheq, unsigned> value;
+    typedef bg::model::ring<point_spheq> ring_spheq;
+    typedef bg::model::polygon<point_spheq> poly_spheq;
+
+    ////create a box out of min and max corner values
+	//box_spheq b(point_spheq(mincorner[0], mincorner[1]), point_spheq(maxcorner[0], maxcorner[1]));
+
+    class RTree_spheq {
         private:
     		// create the rtree using default constructor
     		bgi::rtree< value, bgi::quadratic<16> > _rtree;
 
 		public:
-    		void addPoint(const Vec<2> &xy, const unsigned int &i){
-    			_rtree.insert(std::make_pair(point(xy[0], xy[1]), i));
-    		};
+    		//void addPoint(const Vec<2> &xy, const unsigned int &i){
+    		//	_rtree.insert(std::make_pair(point_spheq(xy[0], xy[1]), i));
+    		//};
+
+    		void addBox(const box_spheq &b, const unsigned int &i){
+    			//insert box in rtree
+				_rtree.insert(std::make_pair(b, i));
+			};
 
     		std::vector<unsigned int> getNearest(const Vec<2> &xy, const int &numNear) const {
     			std::vector<value> result_n;
     			std::vector<unsigned int> nearIDs;
 
-    			_rtree.query(bgi::nearest(point(xy[0], xy[1]), numNear), std::back_inserter(result_n));
+    			_rtree.query(bgi::nearest(point_spheq(xy[0], xy[1]), numNear), std::back_inserter(result_n));
     			BOOST_FOREACH(value const& v, result_n)
 					nearIDs.push_back(v.second);
     			return nearIDs;
     		};
 
+    		std::vector<unsigned int> getRingIntersects(const ring_spheq &ring) const {
+				std::vector<value> result_n;
+				std::vector<unsigned int> intersectIDs;
+
+				_rtree.query(bgi::intersects(ring), std::back_inserter(result_n));
+				BOOST_FOREACH(value const& v, result_n)
+					intersectIDs.push_back(v.second);
+				return intersectIDs;
+			};
 
 	};
 }

@@ -35,10 +35,15 @@ def grab_ETOPO1_subset(file_name, min_lat, max_lat, min_lon, max_lon):
     
 def write_grid(out_file_name, lats, lons, bathy):
     outfile = open(out_file_name, 'w')
+
+    dlon = abs(np.unique(lons)[1] - np.unique(lons)[0])
+    dlat = abs(np.unique(lats)[1] - np.unique(lats)[0])
     
     outfile.write("# N_lats\n")
     outfile.write("# N_lons\n")
-    outfile.write("{} {}\n".format(lons.shape[0],lons.shape[1]))
+    outfile.write("# dlat\n")
+    outfile.write("# dlon\n")
+    outfile.write("{} {} {} {}\n".format(lons.shape[0], lons.shape[1], dlat, dlon))
     outfile.write("##################################\n")
     # Write vertices from top left (Northwest) to bottom right (Southeast)
     for i in list(reversed(range(lons.shape[0]))):
