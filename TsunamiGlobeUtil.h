@@ -584,5 +584,15 @@ namespace tsunamisquares {
 				return intersectIDs;
 			};
 
+    		std::vector<unsigned int> getBoxIntersects(const box_spheq &box) const {
+				std::vector<value> result_n;
+				std::vector<unsigned int> intersectIDs;
+
+				_rtree.query(bgi::intersects(box), std::back_inserter(result_n));
+				BOOST_FOREACH(value const& v, result_n)
+					intersectIDs.push_back(v.second);
+				return intersectIDs;
+			};
+
 	};
 }

@@ -144,8 +144,11 @@ void tsunamisquares::World::moveSquares(const double dt, const double frac_thres
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo;
         double azimuth, distance_traveled, lat2, lon2, a12;
-        std::vector<tsunamisquares::UIndex> neighbors;
-        std::vector<tsunamisquares::UIndex>::const_iterator nit;
+        std::vector<UIndex> neighbor_ids;
+        std::vector<UIndex>::const_iterator nit;
+        std::map<double, UIndex> distsNneighbors;
+		std::map<double, UIndex>::const_iterator dnit;
+
         point_spheq new_bottom_left, new_bottom_right, new_top_left, new_top_right;
         
         current_pos = squareCenter(sit->first);
@@ -154,7 +157,7 @@ void tsunamisquares::World::moveSquares(const double dt, const double frac_thres
         	current_accel = sit->second.accel();
         }else{
         	current_accel = Vec<2>(0,0);
-        }
+        }         /* <(^_^<) Happy Coder says: We're good up through this line!*/
         
 
         // TODO: Prevent squares that haven't been disturbed from going through redistibution calc
@@ -165,7 +168,7 @@ void tsunamisquares::World::moveSquares(const double dt, const double frac_thres
         //new_pos = current_pos + current_velo*dt + current_accel*0.5*dt*dt;
         new_velo = current_velo + current_accel*dt;
         average_velo = current_velo + current_accel*0.5*dt;
-        azimuth = average_velo.vector_angle(Vec<2>(0,1));
+        azimuth = average_velo.vector_angle(Vec<2>(0,1))*(180/M_PI);
         distance_traveled = average_velo.mag()*dt;
 
         //bottom left
@@ -184,25 +187,24 @@ void tsunamisquares::World::moveSquares(const double dt, const double frac_thres
         geod.Direct(current_pos[1]+_dlat, current_pos[0]+_dlon, azimuth, distance_traveled, lat2, lon2);
         new_top_right = point_spheq(lon2, lat2);
 
-
-        // Distribute the volume and momentum
-		if (debug) {
-			std::cout << "---Moving Square " << sit->first << std::endl;
-			std::cout << "current pos: " << current_pos << std::endl;
-			std::cout << "current velo: " << current_velo << std::endl;
-			std::cout << "current accel: " << current_accel << std::endl;
-			std::cout << "new velo: " << new_velo << std::endl;
-		}
-
-		// Make Ring from new vertices
-		point_spheq ring_verts[4] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right};
-        ring_spheq new_ring;
-
+        // Make Ring from new vertices for accurate overlap calc later
+		point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
+		ring_spheq new_ring;
 		bg::assign_points(new_ring, ring_verts);
 
-		// Find all boxes in rtree that intesect the new ring
-		neighbors = getRingIntersects_rtree(new_ring);
+        // Find Bounding Box of new ring for faster intersects calculation (maybe unnecceary)
+        box_spheq new_bbox;
+        if(bg::distance(new_bottom_left, new_bottom_right) > bg::distance(new_bottom_left, new_bottom_right)){
+        	new_bbox = box_spheq(new_bottom_left, point_spheq(new_bottom_right.get<0>(), new_bottom_right.get<1>()+_dlat));
+        }else{
+        	new_bbox = box_spheq(point_spheq(new_top_left.get<0>()-_dlat, new_top_left.get<1>()), new_top_right);
+        }
 
+		// Do a quick grab of nearest squares to new location, then do the accurate intersection check
+        distsNneighbors = getNearest_rtree(Vec<2>(new_bottom_left.get<0>()+_dlon, new_bottom_left.get<1>()+_dlat), 5);
+        for(dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); dnit++){
+        	neighbor_ids.push_back(dnit->second);
+        }
 
 		// Init these for renormalizing the fractions
 		double this_fraction;
@@ -210,33 +212,36 @@ void tsunamisquares::World::moveSquares(const double dt, const double frac_thres
 		std::map<UIndex, double> originalFractions, renormFractions;
 		std::map<UIndex, double>::iterator frac_it;
 
-		// If no overlap, we want to distribute water to nearest square
-		if(neighbors.size() == 0){
-			originalFractions.insert(
-					std::make_pair(getNearest_rtree(Vec<2>(new_top_right.get<0>(), new_top_right.get<1>()), 1).begin()->second, 1.0)
-			);
-			fraction_sum = 1.0;
-		}else{
-			// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
-			for (nit=neighbors.begin(); nit!=neighbors.end(); ++nit) {
-				// This iterator will give us the neighbor square
-				std::map<UIndex, Square>::iterator neighbor_it = _squares.find(*nit);
-				std::vector<poly_spheq> output;
-				double overlap_area;
 
-				bg::intersection(new_ring, neighbor_it->second.box(), output);
+		// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
+		for (nit=neighbor_ids.begin(); nit!=neighbor_ids.end(); ++nit) {
+			// This iterator will give us the neighbor square
+			std::map<UIndex, Square>::iterator neighbor_it = _squares.find(*nit);
+			std::vector<poly_spheq> output;
+			double overlap_area;
 
-				BOOST_FOREACH(poly_spheq const& p, output)
-				{
-					overlap_area = bg::area(p)*(M_PI/180)*(M_PI/180)*EARTH_MEAN_RADIUS;
-				}
+			bg::intersection(new_ring, neighbor_it->second.box(), output);
 
-				this_fraction = overlap_area/neighbor_it->second.area();
-				fraction_sum += this_fraction;
+			BOOST_FOREACH(poly_spheq const& p, output)
+			{
+				overlap_area = bg::area(p)*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
+			}
+
+			this_fraction = overlap_area/neighbor_it->second.area();
+			fraction_sum += this_fraction;
+			if(this_fraction!=0.0){
 				originalFractions.insert(std::make_pair(*nit, this_fraction));
 			}
 		}
-
+		// If no overlap, we want to distribute water to nearest square
+		// TODO: We should implement a line (geodesicLine? bg::Linestring?) from origin to destination,
+		//       and accurately stop (reflect) the square when it hits invalid areas.
+		if(originalFractions.size() == 0){
+			originalFractions.insert(
+					std::make_pair(*neighbor_ids.begin(), 1.0)
+			);
+			fraction_sum = 1.0;
+		}
 
 		if (debug) std::cout << "ID: "<<sit->first<<". Num neighbors: "<< originalFractions.size() << ". Volume fraction: " << fraction_sum << std::endl;
 
@@ -276,20 +281,19 @@ void tsunamisquares::World::moveSquares(const double dt, const double frac_thres
 			neighbor_it->second.set_updated_momentum(M+dM);
 		}
             
-        /*} else {
+        //} else {
             // For those squares that don't move, don't change anything.
-        	sit->second.set_updated_height(sit->second.updated_height());
-            sit->second.set_updated_momentum(sit->second.updated_momentum());
-        }*/
+        //	sit->second.set_updated_height(sit->second.updated_height());
+        //    sit->second.set_updated_momentum(sit->second.updated_momentum());
+        //}
     }
-    
+
     // Loop again over squares to set new velocity and height from accumulated height and momentum
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
     	Vec<2> velo_to_set;
         sit->second.set_height(sit->second.updated_height());
 
         velo_to_set = sit->second.updated_momentum()/(sit->second.mass());
-
 
         // Check for invalid directions of motion (eg at edges or near land)
         // TODO: add parameter to toggle btwn elastic and inelastic collisions with edges (currently inelastic).
@@ -299,7 +303,7 @@ void tsunamisquares::World::moveSquares(const double dt, const double frac_thres
         //if(sit->second.invalid_directions()[3] && velo_to_set[1]>0.0) velo_to_set[1] = 0.0;
 
 
-        sit->second.set_velocity(velo_to_set);         /* <(^_^<) Happy Coder says: We're good up through this line!*/
+        sit->second.set_velocity(velo_to_set);
     }
     
 }
@@ -662,7 +666,8 @@ double tsunamisquares::World::getMinSize() const {
 			minSize = bottom_dist;
 		}
 	}
-	return minSize*(M_PI/180)*EARTH_MEAN_RADIUS;
+	//bg::distance returns angular distance in radians
+	return minSize*EARTH_MEAN_RADIUS;
 }
 
 
@@ -685,13 +690,21 @@ std::map<double, tsunamisquares::UIndex> tsunamisquares::World::getNearest_rtree
 }
 
 std::vector<tsunamisquares::UIndex> tsunamisquares::World::getRingIntersects_rtree(const ring_spheq &ring)const {
-    std::vector<UIndex>						  overlaps;
+    std::vector<UIndex>						  intersects;
+    //Use RTree query to get all boxes that the provided ring intersects (edges and contained within)
+    intersects = _square_rtree.getRingIntersects(ring);
 
-    //Use RTree query to get numNear nearest neighbors
-    overlaps = _square_rtree.getRingIntersects(ring);
-
-    return overlaps;
+    return intersects;
 }
+
+std::vector<tsunamisquares::UIndex> tsunamisquares::World::getBoxIntersects_rtree(const box_spheq &box)const {
+    std::vector<UIndex>						  intersects;
+    //Use RTree query to get all boxes that the provided box intersects (edges and contained within)
+    intersects = _square_rtree.getBoxIntersects(box);
+
+    return intersects;
+}
+
 
 
 // Get the square_id for each closest square to some location = (x,y)

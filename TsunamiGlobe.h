@@ -58,7 +58,7 @@ namespace tsunamisquares {
     // Squares, the functional members of Tsunami Square
     struct SquareData {
         UIndex              _id;
-        double              _lat, _lon, _alt;
+        double              _lat, _lon, _alt, _area;
         Vec<2>              _velocity;
         Vec<2>              _accel;
         double              _height;
@@ -85,7 +85,7 @@ namespace tsunamisquares {
         public:
             Square(void) {
                 _data._id = INVALID_INDEX;
-                _data._lat = _data._lon = _data._alt = std::numeric_limits<double>::quiet_NaN();
+                _data._lat = _data._lon = _data._alt = _data._area = std::numeric_limits<double>::quiet_NaN();
                 _pos = Vec<3>();
                 _data._velocity = _data._accel = _data._updated_momentum = Vec<2>(0.0,0.0);
                 _data._height = _data._updated_height = std::numeric_limits<double>::quiet_NaN();
@@ -163,14 +163,25 @@ namespace tsunamisquares {
             }
             void set_box(const double &dlon, const double &dlat) {
             	_box = box_spheq(point_spheq(_pos[0]-dlon, _pos[1]-dlat), point_spheq(_pos[0]+dlon, _pos[1]+dlat));
+            	// set area when we set box
+            	_data._area = bg::area(ring())*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
             }
             box_spheq box(void) const {
             	return _box;
             }
+            ring_spheq ring(void) const {
+            	ring_spheq box_ring;
+				point_spheq boxverts[5];
+				boxverts[0] =_box.min_corner();
+				boxverts[1] = point_spheq(_box.min_corner().get<0>(), _box.max_corner().get<1>());
+				boxverts[2] =_box.max_corner();
+				boxverts[3] = point_spheq(_box.max_corner().get<0>(), _box.min_corner().get<1>());
+				boxverts[4] =_box.min_corner();
+				bg::assign_points(box_ring, boxverts);
+            	return box_ring;
+            }
             double area(void) const {
-            	// bg::area should be returning units of square degrees, so use degree->radian conversion factor twice,
-            	// then earth's radius in meters
-				return bg::area(_box)*(M_PI/180)*(M_PI/180)*EARTH_MEAN_RADIUS;
+            	return _data._area;
 			}
 
             double volume(void) const {
@@ -417,6 +428,7 @@ namespace tsunamisquares {
 
             std::map<double, UIndex> getNearest_rtree(const Vec<2> &location, const int &numNear) const;
             std::vector<UIndex> getRingIntersects_rtree(const ring_spheq &ring) const;
+            std::vector<UIndex> getBoxIntersects_rtree(const box_spheq &box) const;
             SquareIDSet getNeighborIDs(const UIndex &square_id) const;
             
             /// Test ///
