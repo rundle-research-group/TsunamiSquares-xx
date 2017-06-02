@@ -82,32 +82,29 @@ int main (int argc, char **argv) {
     const std::string   deformation_file 	= param_values[3];
 
     bool	move_bool						= atof(param_values[4].c_str());
-	bool	diffuse_bool					= atof(param_values[5].c_str());
+	bool	accel_bool						= atof(param_values[5].c_str());
+	bool	diffuse_bool					= atof(param_values[6].c_str());
     // Diffusion constant (fit to a reasonable looking sim)
-    double 	D 								= atof(param_values[6].c_str()); //140616.45;
+    double 	D 								= atof(param_values[7].c_str()); //140616.45;
     // Time step in seconds
-    double  dt_param								= atof(param_values[7].c_str());
+    double  dt_param						= atof(param_values[8].c_str());
     // Number of times to move squares
-    int 	N_steps 						= atof(param_values[8].c_str()); //number of time steps 10 is fine, to see a bit of movement
+    int 	N_steps 						= atof(param_values[9].c_str()); //number of time steps 10 is fine, to see a bit of movement
     // because boundaries aren't defined very well, we limit the time steps whenever the water hits the walls of things
     // Updating intervals, etc.
-    int 	current_step 					= atof(param_values[9].c_str());
-    int 	update_step 					= atof(param_values[10].c_str());
-    int 	save_step 						= atof(param_values[11].c_str());
-    double 	time 							= atof(param_values[12].c_str());
-    int 	output_num_digits_for_percent 	= atof(param_values[13].c_str());
-    // Flattening the bathymetry to a constant depth (negative for below sea level)
-	double 	flat_depth 						= atof(param_values[14].c_str());
+    int 	current_step 					= atof(param_values[10].c_str());
+    int 	update_step 					= atof(param_values[11].c_str());
+    int 	save_step 						= atof(param_values[12].c_str());
+    double 	time 							= atof(param_values[13].c_str());
+    int 	output_num_digits_for_percent 	= atof(param_values[14].c_str());
     //Boolean to decide whether to flatten the seafloor before running, for testing purposes
     bool	flatten_bool					= atof(param_values[15].c_str());
-    // Bumping up the bottom
-	double 	bump_height 					= atof(param_values[16].c_str());
+    // Flattening the bathymetry to a constant depth (negative for below sea level)
+	double 	flat_depth 						= atof(param_values[16].c_str());
     //Boolean to decide whether to use bump instead deformation file, for testing purposes
 	bool	bump_bool						= atof(param_values[17].c_str());
-	//Fraction threshhold for considering square overlap during redistribution of water
-	double	frac_threshold					= atof(param_values[18].c_str());
-	bool	accel_bool						= atof(param_values[19].c_str());
-
+    // How high the central bump should be
+	double 	bump_height 					= atof(param_values[18].c_str());
 
 
     // Header for the simulation output
@@ -123,9 +120,8 @@ int main (int argc, char **argv) {
     this_world.read_bathymetry(bathy_file.c_str());
     // Index the neighbors by left/right/top etc.
     std::cout << "Indexing neighbors......" << std::endl;
-    this_world.computeNeighbors();
-    this_world.computeInvalidDirections();
-    
+    this_world.indexNeighbors();
+
     // Flatten the bottom for simple simulation test cases, do not do this for tsunami simulations
 	if(flatten_bool){
 		std::cout << "Flattening the bottom..."<< std::endl;
@@ -184,8 +180,6 @@ int main (int argc, char **argv) {
     }
 
 
-    //this_world.diffuseSquares(dt);
-
     // --------------------------------------------------------------------------------//
     // --==                         File I/O Preparation                          --== //
     // --------------------------------------------------------------------------------//
@@ -214,7 +208,7 @@ int main (int argc, char **argv) {
         }
         // Move the squares
         if(move_bool) {
-        	this_world.moveSquares(dt, frac_threshold, accel_bool);
+        	this_world.moveSquares(dt, accel_bool);
         }
         if(diffuse_bool) {
         	this_world.diffuseSquares(dt, D); //smoothing operation
@@ -222,6 +216,10 @@ int main (int argc, char **argv) {
         time += dt;
         current_step += 1;
     }
+    // Write the final state to the file
+    for (it=ids.begin(); it!=ids.end(); ++it) {
+		this_world.write_square_ascii(out_file, time, *it);
+	}
     out_file.close();
 
 
@@ -364,51 +362,4 @@ int main (int argc, char **argv) {
 //            //this_world.setSquareVelocity(i, tsunamisquares::Vec<2>(0.0, -this_world.square(0).Ly()/100));
 //        }
 //    }
-    
-    // Initial conditions
-//    tsunamisquares::UIndex bot_right = (int)(this_world.num_squares()*0.5 + 0.5*sqrt(this_world.num_squares()));
-//    tsunamisquares::UIndex bot_left  = bot_right-1;
-//    tsunamisquares::UIndex top_left  = bot_left+(int)sqrt(this_world.num_squares());
-//    tsunamisquares::UIndex top_right = bot_right+(int)sqrt(this_world.num_squares());
-//////    // TODO: Save num_lons and num_lats in the world object
-////    std::cout << "Deforming the bottom... " << std::endl;
-//    this_world.deformBottom(bot_left,100.0);
-//    this_world.deformBottom(top_left,100.0);
-//    this_world.deformBottom(top_right,100.0);
-//    this_world.deformBottom(bot_right,100.0);
-//    
-//    // Smooth the initial bump
-//    this_world.diffuseSquares(dt);
-//    this_world.diffuseSquares(dt);
-
-
-
-
-//  Verifying the neighbor indexing ////////////////////////
-//    tsunamisquares::UIndex top_left_corner  = 0;
-//    this_world.square(top_left_corner).print_neighbors();
-//    
-//    tsunamisquares::UIndex top_right_corner = num_lons-1;
-//    this_world.square(top_right_corner).print_neighbors();
-//    
-//    tsunamisquares::UIndex bottom_left_corner = num_lons*(num_lats-1);
-//    this_world.square(bottom_left_corner).print_neighbors();
-//    
-//    tsunamisquares::UIndex bottom_right_corner = num_lons*num_lats - 1;
-//    this_world.square(bottom_right_corner).print_neighbors();
-//    
-//    tsunamisquares::UIndex central = (int)(this_world.num_squares()*0.5);
-//    this_world.square(central).print_neighbors();
-//    
-//    tsunamisquares::UIndex left_border = num_lons;
-//    this_world.square(left_border).print_neighbors();
-//    
-//    tsunamisquares::UIndex top_border = (int) (num_lons*0.5);
-//    this_world.square(top_border).print_neighbors();
-//    
-//    tsunamisquares::UIndex right_border = 2*num_lons - 1;
-//    this_world.square(right_border).print_neighbors();
-//    
-//    tsunamisquares::UIndex bottom_border = bottom_left_corner+top_border;
-//    this_world.square(bottom_border).print_neighbors();
 

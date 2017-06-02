@@ -64,7 +64,6 @@ namespace tsunamisquares {
         double              _height;
         double              _friction;
         double              _density;
-        bool                _invalid_directions[4];
 
         // updated data are used to keep track of volume/momentum redistribution from other squares
         double               _updated_height;
@@ -73,13 +72,17 @@ namespace tsunamisquares {
 
     class Square : public ModelIO {
         private:
-            SquareData     _data;
-            //SquareIDSet    _neighbors;
-            UIndex         _top, _bottom, _right, _left, _top_right, _top_left, _bottom_left, _bottom_right;
+            SquareData                _data;
 
-            Vec<3> 	       _pos;
+            UIndex                    _top, _bottom, _right, _left, _top_right, _top_left, _bottom_left, _bottom_right;
 
-            box_spheq      _box;
+            std::map<UIndex, Vec<2> > _local_neighbor_coords;
+
+            std::vector<bool>         _invalid_directions;
+
+            Vec<3> 	                  _pos;
+
+            box_spheq                 _box;
 
 
         public:
@@ -92,9 +95,7 @@ namespace tsunamisquares {
                 _data._density = 1025.0; // sea water by default
                 _data._friction = 0.02;
                 
-                for(int i=0;i<4;i++){
-                	_data._invalid_directions[i] = 0;
-                }
+                _invalid_directions = std::vector<bool>(4, false);
 
                 _left = _right = _top = _bottom = INVALID_INDEX;
                 _top_right = _top_left = _bottom_left = _bottom_right = INVALID_INDEX;
@@ -196,14 +197,22 @@ namespace tsunamisquares {
                 return _data._velocity*mass();
             };
             
-            bool* invalid_directions(void) {
-            	return _data._invalid_directions;
+            std::vector<bool> invalid_directions(void) {
+            	return _invalid_directions;
             }
 
-            void set_invalid_directions(bool* new_invalid_directions) {
+            void set_invalid_directions(const std::vector<bool> &new_invalid_directions) {
             	for(int i=0;i<4;i++){
-            		_data._invalid_directions[i] = new_invalid_directions[i];
+            		_invalid_directions[i] = new_invalid_directions[i];
             	}
+            }
+
+            std::map<UIndex, Vec<2> > local_neighbor_coords(void) const {
+            	return _local_neighbor_coords;
+            }
+
+            void set_local_neighbor_coords(const std::map<UIndex, Vec<2> > coord_map) {
+            	_local_neighbor_coords = coord_map;
             }
 
             //  All functions with top/bottom/left/right are setting the IDs of the corresponding
@@ -435,13 +444,15 @@ namespace tsunamisquares {
             
 
             // ======= Main functions =========
+            void indexNeighbors(void);
             void computeNeighbors(void);
+            void computeNeighborCoords(void);
             void computeInvalidDirections(void);
             void fillToSeaLevel(void);
-            void moveSquares(const double dt, const double frac_threshold, const bool accel_bool);
+            void moveSquares(const double dt, const bool accel_bool);
             void diffuseSquares(const double dt, const double D);
             Vec<2> getGradient(const UIndex &square_id) const;
-            Vec<2> fitPointsToPlane(const SquareIDSet &square_ids);
+            Vec<2> fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids);
             tsunamisquares::Vec<2> getGradient_planeFit(const UIndex &square_id);
             void updateAcceleration(const UIndex &square_id);
             void deformBottom(const UIndex &square_id, const double &height_change);

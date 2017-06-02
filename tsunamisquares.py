@@ -36,7 +36,7 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP):
     print "min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std()
     lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
     lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
-    z_min,z_max = -sim_data['z'].std()/10, sim_data['z'].std()/10#-.1, .1#-10, 10#sim_data['z'].min(), sim_data['z'].max()#
+    z_min,z_max = sim_data['z'].min(), sim_data['z'].max()#-sim_data['z'].std(), sim_data['z'].std()#-.1, .1#-10, 10#
     cmap = plt.get_cmap('Blues_r')
     norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
     interp = 'none'
@@ -343,7 +343,7 @@ if __name__ == "__main__":
         sim_file = "tsunami_output.txt"
         save_file = sim_file.split(".")[0]+".mp4"
         sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
-        FPS = 30 #FRAMES PER SECOND
+        FPS = 20 #FRAMES PER SECOND
         DPI = 100
         T_MAX,T_MIN = sim_data['time'].max(),sim_data['time'].min()
         T_STEP = np.unique(sim_data['time'])[1] - np.unique(sim_data['time'])[0]

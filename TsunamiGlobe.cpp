@@ -124,11 +124,18 @@ void tsunamisquares::World::diffuseSquares(const double dt, const double D) {
 
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
-void tsunamisquares::World::moveSquares(const double dt, const double frac_threshold, const bool accel_bool) {
+void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool) {
     std::map<UIndex, Square>::iterator sit;
-    Geodesic geod(EARTH_MEAN_RADIUS, 0);
-    bool debug = false;
-    
+    Geodesic geod(EARTH_MEAN_RADIUS, 0);         /* <(^_^<) Happy Coder says: We're good up through this line!*/
+
+    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+		if(isnan(sit->second.height())) std::cout << "ID " << sit->first << ": Height NaN"   << std::endl;
+		if(isnan(sit->second.velocity()[0])) std::cout << "ID " << sit->first << ": Velocity NaN" << std::endl;
+		if(isnan(sit->second.momentum()[0])) std::cout << "ID " << sit->first << ": Momentum NaN" << std::endl;
+		if(isnan(sit->second.accel()[0]))    std::cout << "ID " << sit->first << ": Accel NaN"    << std::endl;
+		if(isnan(sit->second.xyz()[0]))      std::cout << "ID " << sit->first << ": Position NaN" << std::endl;
+    }
+
     // Initialize the updated height and velocity to zero. These are the containers
     // used to keep track of the distributed height/velocity from moving squares.
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
@@ -137,160 +144,142 @@ void tsunamisquares::World::moveSquares(const double dt, const double frac_thres
         sit->second.set_updated_momentum(m);
         // Set acceleration based on the current slope of the water surface
         updateAcceleration(sit->first);
-        
     }
-    
+
     // Now go through each square and move the water, distribute to neighbors
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo;
-        double azimuth, distance_traveled, lat2, lon2, a12;
-        std::vector<UIndex> neighbor_ids;
-        std::vector<UIndex>::const_iterator nit;
+        double local_azimuth, distance_traveled, av_velo_mag, lat2, lon2, a12;
         std::map<double, UIndex> distsNneighbors;
 		std::map<double, UIndex>::const_iterator dnit;
-
         point_spheq new_bottom_left, new_bottom_right, new_top_left, new_top_right;
-        
+
         current_pos = squareCenter(sit->first);
         current_velo = sit->second.velocity();
         if(accel_bool){
         	current_accel = sit->second.accel();
         }else{
         	current_accel = Vec<2>(0,0);
-        }         /* <(^_^<) Happy Coder says: We're good up through this line!*/
+        }
         
-
-        // TODO: Prevent squares that haven't been disturbed from going through redistibution calc
 
         // Move the square: calculate average velocity during motion, find azimuth of that vector, and move
         //  each vertex of the square to it's new location on the sphere.  This forms a Ring, which intersects some number of
         //  boxes in our rtree.
-        //new_pos = current_pos + current_velo*dt + current_accel*0.5*dt*dt;
         new_velo = current_velo + current_accel*dt;
         average_velo = current_velo + current_accel*0.5*dt;
-        azimuth = average_velo.vector_angle(Vec<2>(0,1))*(180/M_PI);
         distance_traveled = average_velo.mag()*dt;
 
-        //bottom left
-        geod.Direct(current_pos[1]-_dlat, current_pos[0]-_dlon, azimuth, distance_traveled, lat2, lon2);
-        new_bottom_left = point_spheq(lon2, lat2);
-
-        //bottom right
-        geod.Direct(current_pos[1]-_dlat, current_pos[0]+_dlon, azimuth, distance_traveled, lat2, lon2);
-		new_bottom_right = point_spheq(lon2, lat2);
-
-        //top left
-		geod.Direct(current_pos[1]+_dlat, current_pos[0]-_dlon, azimuth, distance_traveled, lat2, lon2);
-        new_top_left = point_spheq(lon2, lat2);
-
-        //top right
-        geod.Direct(current_pos[1]+_dlat, current_pos[0]+_dlon, azimuth, distance_traveled, lat2, lon2);
-        new_top_right = point_spheq(lon2, lat2);
-
-        // Make Ring from new vertices for accurate overlap calc later
-		point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
-		ring_spheq new_ring;
-		bg::assign_points(new_ring, ring_verts);
-
-        // Find Bounding Box of new ring for faster intersects calculation (maybe unnecceary)
-        box_spheq new_bbox;
-        if(bg::distance(new_bottom_left, new_bottom_right) > bg::distance(new_bottom_left, new_bottom_right)){
-        	new_bbox = box_spheq(new_bottom_left, point_spheq(new_bottom_right.get<0>(), new_bottom_right.get<1>()+_dlat));
+        //If the square didn't move, or has run out of water, immediately distribute it's water back to itself
+        //   (along with any contributions from other squares)
+        if(average_velo == Vec<2>(0.0, 0.0) || sit->second.height() == 0.0){
+        	sit->second.set_updated_height(sit->second.updated_height() + sit->second.height());
+        	sit->second.set_updated_momentum(sit->second.updated_momentum() + sit->second.momentum());
         }else{
-        	new_bbox = box_spheq(point_spheq(new_top_left.get<0>()-_dlat, new_top_left.get<1>()), new_top_right);
-        }
-
-		// Do a quick grab of nearest squares to new location, then do the accurate intersection check
-        distsNneighbors = getNearest_rtree(Vec<2>(new_bottom_left.get<0>()+_dlon, new_bottom_left.get<1>()+_dlat), 5);
-        for(dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); dnit++){
-        	neighbor_ids.push_back(dnit->second);
-        }
-
-		// Init these for renormalizing the fractions
-		double this_fraction;
-		double fraction_sum = 0.0;
-		std::map<UIndex, double> originalFractions, renormFractions;
-		std::map<UIndex, double>::iterator frac_it;
-
-
-		// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
-		for (nit=neighbor_ids.begin(); nit!=neighbor_ids.end(); ++nit) {
-			// This iterator will give us the neighbor square
-			std::map<UIndex, Square>::iterator neighbor_it = _squares.find(*nit);
-			std::vector<poly_spheq> output;
-			double overlap_area;
-
-			bg::intersection(new_ring, neighbor_it->second.box(), output);
-
-			BOOST_FOREACH(poly_spheq const& p, output)
-			{
-				overlap_area = bg::area(p)*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
+        	// Calculate azimuth for geodesic calculation
+			if(atan2(average_velo[1], average_velo[0]) >= -(M_PI/2)){
+				local_azimuth = 90-atan2(average_velo[1], average_velo[0])*(180/M_PI);
+			}else{
+				local_azimuth = -270-atan2(average_velo[1], average_velo[0])*(180/M_PI);
 			}
 
-			this_fraction = overlap_area/neighbor_it->second.area();
-			fraction_sum += this_fraction;
-			if(this_fraction!=0.0){
-				originalFractions.insert(std::make_pair(*nit, this_fraction));
+			//bottom left
+			geod.Direct(current_pos[1]-_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+			new_bottom_left = point_spheq(lon2, lat2);
+
+			//bottom right
+			geod.Direct(current_pos[1]-_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+			new_bottom_right = point_spheq(lon2, lat2);
+
+			//top left
+			geod.Direct(current_pos[1]+_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+			new_top_left = point_spheq(lon2, lat2);
+
+			//top right
+			geod.Direct(current_pos[1]+_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+			new_top_right = point_spheq(lon2, lat2);
+
+			// Make Ring from new vertices for accurate overlap calc later
+			point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
+			ring_spheq new_ring;
+			bg::assign_points(new_ring, ring_verts);
+
+			// Do a quick grab of nearest squares to new location, then do the accurate intersection check
+			distsNneighbors = getNearest_rtree(Vec<2>(new_bottom_left.get<0>()+_dlon/2, new_bottom_left.get<1>()+_dlat/2), 5);
+
+
+			// Init these for renormalizing the fractions
+			double this_fraction;
+			double fraction_sum = 0.0;
+			std::map<UIndex, double> originalFractions, renormFractions;
+			std::map<UIndex, double>::iterator frac_it;
+
+
+			// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
+			int is_any_overlap = 0;
+			for (dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); ++dnit) {
+				std::map<UIndex, Square>::iterator neighbor_it = _squares.find(dnit->second);
+				std::vector<poly_spheq> output;
+				double overlap_area=0.0;
+
+				bg::intersection(new_ring, neighbor_it->second.box(), output);
+
+				if(output.size() != 0){
+					BOOST_FOREACH(poly_spheq const& p, output)
+					{
+						overlap_area = bg::area(p)*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
+					}
+
+					this_fraction = overlap_area/neighbor_it->second.area();
+					fraction_sum += this_fraction;
+					originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
+					is_any_overlap++;
+				}
 			}
-		}
-		// If no overlap, we want to distribute water to nearest square
-		// TODO: We should implement a line (geodesicLine? bg::Linestring?) from origin to destination,
-		//       and accurately stop (reflect) the square when it hits invalid areas.
-		if(originalFractions.size() == 0){
-			originalFractions.insert(
-					std::make_pair(*neighbor_ids.begin(), 1.0)
-			);
-			fraction_sum = 1.0;
-		}
 
-		if (debug) std::cout << "ID: "<<sit->first<<". Num neighbors: "<< originalFractions.size() << ". Volume fraction: " << fraction_sum << std::endl;
+			// If no overlap, we want to distribute water to nearest square
+			// TODO: We should implement a line (geodesicLine? bg::Linestring?) from origin to destination,
+			//       and accurately stop (reflect) the square when it hits invalid areas.
+			if(!is_any_overlap){
+				originalFractions.insert(std::make_pair(distsNneighbors.begin()->second, 1.0));
+				fraction_sum = 1.0;
+			}
 
-		// Then normalize these fractions to enforce conservation.
-		for (frac_it=originalFractions.begin(); frac_it!=originalFractions.end(); ++frac_it) {
-			//assertThrow((frac_it->second)/fraction_sum <= 1, "Area fraction must be less than 1.");
-			renormFractions.insert(std::make_pair(frac_it->first, (frac_it->second)/fraction_sum));
-		}
+			// Then normalize these fractions to enforce conservation.
 
-		// Check that the normalized fractions sum exactly to 1
-		if (debug) {
-			double renormSum = 0.0;
+			for (frac_it=originalFractions.begin(); frac_it!=originalFractions.end(); ++frac_it) {
+				//assertThrow((frac_it->second)/fraction_sum <= 1, "Area fraction must be less than 1.");
+				renormFractions.insert(std::make_pair(frac_it->first, (frac_it->second)/fraction_sum));
+			}
+
+			// Compute height and momentum imparted to neighbors
 			for (frac_it=renormFractions.begin(); frac_it!=renormFractions.end(); ++frac_it) {
-				renormSum += frac_it->second;
+				// This iterator will give us the neighbor square
+				std::map<UIndex, Square>::iterator neighbor_it = _squares.find(frac_it->first);
+				//// This iterates through the renormalized fractions
+				//frac_it = renormFractions.find(nit->second);
+				double areaFraction = frac_it->second;
+
+				// Update the amount of water in the neighboring square (conserve volume)
+				double dV = sit->second.volume()*areaFraction;
+				double H = neighbor_it->second.updated_height();
+				double A_n = neighbor_it->second.area();
+				neighbor_it->second.set_updated_height(H + dV/A_n);
+
+				// Conserve momentum, update the velocity accordingly (at the end)
+				Vec<2> dM = new_velo*sit->second.mass()*areaFraction;
+				Vec<2> M  = neighbor_it->second.updated_momentum();
+				neighbor_it->second.set_updated_momentum(M+dM);
+
+
 			}
-			std::cout.precision(17);
-			std::cout << "1st Renorm: summed fraction: " << std::fixed << renormSum << std::endl;
-		}
-
-		// Compute height and momentum imparted to neighbors
-		for (frac_it=renormFractions.begin(); frac_it!=renormFractions.end(); ++frac_it) {
-			// This iterator will give us the neighbor square
-			std::map<UIndex, Square>::iterator neighbor_it = _squares.find(frac_it->first);
-			//// This iterates through the renormalized fractions
-			//frac_it = renormFractions.find(nit->second);
-			double areaFraction = frac_it->second;
-
-			// Update the amount of water in the neighboring square (conserve volume)
-			double dV = sit->second.volume()*areaFraction;
-			double H = neighbor_it->second.updated_height();
-			double A_n = neighbor_it->second.area();
-			neighbor_it->second.set_updated_height(H + dV/A_n);
-
-			// Conserve momentum, update the velocity accordingly (at the end)
-			Vec<2> dM = new_velo*areaFraction*(sit->second.mass());
-			Vec<2> M  = neighbor_it->second.updated_momentum();
-			neighbor_it->second.set_updated_momentum(M+dM);
-		}
-            
-        //} else {
-            // For those squares that don't move, don't change anything.
-        //	sit->second.set_updated_height(sit->second.updated_height());
-        //    sit->second.set_updated_momentum(sit->second.updated_momentum());
-        //}
+        }
     }
 
     // Loop again over squares to set new velocity and height from accumulated height and momentum
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
     	Vec<2> velo_to_set;
+
         sit->second.set_height(sit->second.updated_height());
 
         velo_to_set = sit->second.updated_momentum()/(sit->second.mass());
@@ -302,8 +291,9 @@ void tsunamisquares::World::moveSquares(const double dt, const double frac_thres
         //if(sit->second.invalid_directions()[2] && velo_to_set[1]<0.0) velo_to_set[1] = 0.0;
         //if(sit->second.invalid_directions()[3] && velo_to_set[1]>0.0) velo_to_set[1] = 0.0;
 
-
         sit->second.set_velocity(velo_to_set);
+
+
     }
     
 }
@@ -325,13 +315,11 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id) {
         
         new_accel = grav_accel + friction_accel;
 
-
         // Check for invalid directions of motion (eg at edges or near land)
         if(square_it->second.invalid_directions()[0] && new_accel[0]<0.0) new_accel[0] = 0.0;
         if(square_it->second.invalid_directions()[1] && new_accel[0]>0.0) new_accel[0] = 0.0;
         if(square_it->second.invalid_directions()[2] && new_accel[1]<0.0) new_accel[1] = 0.0;
         if(square_it->second.invalid_directions()[3] && new_accel[1]>0.0) new_accel[1] = 0.0;
-
 
         // Set the acceleration
         square_it->second.set_accel(new_accel);
@@ -368,7 +356,7 @@ tsunamisquares::SquareIDSet tsunamisquares::World::get_neighbors_for_accel(const
     return valid_squares;
 }
 
-tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const SquareIDSet &square_ids) {
+tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids) {
     // --------------------------------------------------------------------
     // Based on StackOverflow article:
     // http://stackoverflow.com/questions/1400213/3d-least-squares-plane
@@ -376,16 +364,20 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const SquareIDSet
     std::vector<double>             x_vals, y_vals, z_vals;
     SquareIDSet::const_iterator                      id_it;
     Vec<2>                                        gradient;
+    SquareIDSet::const_iterator iit;
+    std::map<UIndex, Vec<2> > neighborsAndCoords, neighbors_for_fitting;
     int                             i, N = square_ids.size();
     Vec<9> A;
     Vec<3> b, x;
     
+	neighborsAndCoords = square(this_id).local_neighbor_coords();
+
     for (id_it=square_ids.begin(); id_it!=square_ids.end(); ++id_it) {
-        x_vals.push_back(squareCenter(*id_it)[0]);
-        y_vals.push_back(squareCenter(*id_it)[1]);
+        x_vals.push_back(neighborsAndCoords[*id_it][0]);
+        y_vals.push_back(neighborsAndCoords[*id_it][1]);
         z_vals.push_back(squareLevel(*id_it));
     }
-    
+
     // Build the b vector and the A matrix.
     // Single index for matrix, array style. A[i][j] = A_vec[i*3 + j],  N_cols=3
     for (i=0; i<N; ++i) {
@@ -404,56 +396,58 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const SquareIDSet
         A[7] += y_vals[i];
         A[8] += 1.0;
     }
-    
-//    //std::cout << "\npre x: " << x[0] << ", " << x[1] << ", " << x[2] << std::endl;
-//    std::cout << "\n\nb: " << b[0] << ", " << b[1] << ", " << b[2] << std::endl;
-//    std::cout << "A: " << A[0] << ", " << A[1] << ", " << A[2] << std::endl;
-//    std::cout << "   " << A[3] << ", " << A[4] << ", " << A[5] << std::endl;
-//    std::cout << "   " << A[6] << ", " << A[7] << ", " << A[8] << std::endl;
+
+    //Cramer's rule for 3x3 system
+    float det_A = (A[0]*A[4]*A[8]+A[1]*A[5]*A[6]+A[3]*A[7]*A[2]-A[2]*A[4]*A[6]-A[1]*A[3]*A[8]-A[0]*A[5]*A[7]);
+
+    x[0] = (b[0]*A[4]*A[8]+A[1]*A[5]*b[2]+b[1]*A[7]*A[2]-A[2]*A[4]*b[2]-A[1]*b[1]*A[8]-b[0]*A[5]*A[7])/det_A;
+    x[1] = (A[0]*b[1]*A[8]+b[0]*A[5]*A[6]+A[3]*b[2]*A[2]-A[2]*b[1]*A[6]-b[0]*A[3]*A[8]-A[0]*A[5]*b[2])/det_A;
+
+    gradient[0] = x[0];
+    gradient[1] = x[1];
+
+    return gradient;
+
+    // Matrix determinant debugging
+    /*if(det_A == 0.0){
+     	std::cout<<" 0 determinant! " << std::endl;
+        //std::cout << "\npre x: " << x[0] << ", " << x[1] << ", " << x[2] << std::endl;
+        //std::cout << "\n\nb: " << b[0] << ", " << b[1] << ", " << b[2] << std::endl;
+        std::cout << std::fixed << "A: " << A[0] << ",\t " << A[1] << ",\t " << A[2] << std::endl;
+        std::cout << std::fixed << "   " << A[3] << ",\t " << A[4] << ",\t " << A[5] << std::endl;
+        std::cout << std::fixed << "   " << A[6] << ",\t " << A[7] << ",\t " << A[8] << std::endl;
+        std::cout << std::endl;
+        for(std::vector<double>::iterator i=x_vals.begin(); i!=x_vals.end(); i++){
+        	std::cout << std::fixed << "\txs: " << *i << std::endl;
+        }
+        for(std::vector<double>::iterator i=y_vals.begin(); i!=y_vals.end(); i++){
+        	std::cout << std::fixed << "\tys: " << *i << std::endl;
+        }
+    }*/
     
     // Matrix solver below is adapted from Virtual Quake
     /*
     int     j, k;
     double  v, f, sum;
     int     n = 3;
-
     for (i=0; i<n; ++i) {
         v = A[i+n*i];
-
         for (j=i+1; j<n; ++j) {
             f = A[i+n*j]/v;
-
             for (k=0; k<n; ++k) {
                 A[k+n*j] -= f*A[k+n*i];
             }
-
             b[j] -= f*b[i];
         }
     }
-
     for (i=n-1; i>=0; --i) {
         sum = b[i];
-
         for (j=i+1; j<n; ++j) {
             sum -= A[j+n*i]*x[j];
         }
-
         x[i] = sum/A[i+n*i];
-        
     }
     */
-
-    //Cramer's rule for 3x3 system
-    float det_A = (A[0]*A[4]*A[8]+A[1]*A[5]*A[6]+A[3]*A[7]*A[2]-A[2]*A[4]*A[6]-A[1]*A[3]*A[8]-A[0]*A[5]*A[7]);
-    x[0] = (b[0]*A[4]*A[8]+A[1]*A[5]*b[2]+b[1]*A[7]*A[2]-A[2]*A[4]*b[2]-A[1]*b[1]*A[8]-b[0]*A[5]*A[7])/det_A;
-    x[1] = (A[0]*b[1]*A[8]+b[0]*A[5]*A[6]+A[3]*b[2]*A[2]-A[2]*b[1]*A[6]-b[0]*A[3]*A[8]-A[0]*A[5]*b[2])/det_A;
-
-    //std::cout << "\nsolved for x: " << x[0] << ", " << x[1] << ", " << x[2] << std::endl;
-    
-    gradient[0] = x[0];
-    gradient[1] = x[1];
-    return gradient;
-
 }
 
 tsunamisquares::Vec<2> tsunamisquares::World::getGradient_planeFit(const UIndex &square_id) {
@@ -462,16 +456,9 @@ tsunamisquares::Vec<2> tsunamisquares::World::getGradient_planeFit(const UIndex 
     bool debug = false;
     SquareIDSet square_ids_to_fit;
     
-    // TODO: Better boundary conditions. For now, Lets let all squares accelerate.
-    //if ( squareLatLon(square_it->first)[0] == min_lat() || squareLatLon(square_it->first)[0] == max_lat() || squareLatLon(square_it->first)[1] == min_lon() || squareLatLon(square_it->first)[1] == max_lon() ) {
-    //    gradient = Vec<2>(0.0,0.0);
-    //} else {
-        square_ids_to_fit = get_neighbors_for_accel(square_id);
-        
-        gradient = fitPointsToPlane(square_ids_to_fit);
-    //}
-    
-    //std::cout << "grabbed gradient = (" << gradient[0] << ", " << gradient[1] << ")" << std::endl;
+	square_ids_to_fit = get_neighbors_for_accel(square_id);
+
+	gradient = fitPointsToPlane(square_id, square_ids_to_fit);
 
     return gradient;
 }
@@ -725,10 +712,16 @@ tsunamisquares::UIndex tsunamisquares::World::whichSquare(const Vec<2> &location
 }
 
 
+void tsunamisquares::World::indexNeighbors(void) {
+	computeNeighbors();
+	computeNeighborCoords();
+	computeInvalidDirections();
+}
+
 void tsunamisquares::World::computeNeighbors(void) {
     std::map<UIndex, Square>::iterator                                  sit;
     double                                              this_lat, this_lon; 
-    bool                                    minLat, minLon, maxLat, maxLon;
+    bool                                    isMinLat, isMinLon, isMaxLat, isMaxLon;
     UIndex                       this_id, left, right, top_right, top_left;
     UIndex                          bottom_left, bottom_right, top, bottom;
     
@@ -736,25 +729,25 @@ void tsunamisquares::World::computeNeighbors(void) {
     // Must handle the border and corner cases and not include off-model neighbors.
     
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-        this_id     = sit->first;
-        left        = this_id-1;
-        right       = this_id+1;
-        top         = this_id-num_lons();
-        bottom      = this_id+num_lons();
-        top_left    = top-1;
-        top_right   = top+1;
-        bottom_left = bottom-1;
-        bottom_right= bottom+1;
+        this_id      = sit->first;
+        left         = this_id-1;
+        right        = this_id+1;
+        top          = this_id-num_lons();
+        bottom       = this_id+num_lons();
+        top_left     = top-1;
+        top_right    = top+1;
+        bottom_left  = bottom-1;
+        bottom_right = bottom+1;
         
-        this_lat    = sit->second.xy()[1];
-        this_lon    = sit->second.xy()[0];
-        minLat      = this_lat == min_lat();
-        maxLat      = this_lat == max_lat();
-        minLon      = this_lon == min_lon();
-        maxLon      = this_lon == max_lon();
+        this_lat      = sit->second.xy()[1];
+        this_lon      = sit->second.xy()[0];
+        isMinLat      = (this_lat == min_lat());
+        isMaxLat      = (this_lat == max_lat());
+        isMinLon      = (this_lon == min_lon());
+        isMaxLon      = (this_lon == max_lon());
         
         // Handle the corner and edge cases
-        if (! (maxLat || maxLon || minLon || minLat)) {
+        if (! (isMaxLat || isMaxLon || isMinLon || isMinLat)) {
             // Interior squares
             sit->second.set_right(right);
             sit->second.set_left(left);
@@ -764,48 +757,48 @@ void tsunamisquares::World::computeNeighbors(void) {
             sit->second.set_top_right(top_right);
             sit->second.set_bottom_left(bottom_left);
             sit->second.set_bottom_right(bottom_right);
-        } else if (maxLat && minLon) {
+        } else if (isMaxLat && isMinLon) {
             // Top left (North West) corner
             sit->second.set_right(right);
             sit->second.set_bottom(bottom);
             sit->second.set_bottom_right(bottom_right);
-        } else if (maxLat && maxLon) {
+        } else if (isMaxLat && isMaxLon) {
             // Top right (North East) corner
             sit->second.set_left(left);
             sit->second.set_bottom(bottom);
             sit->second.set_bottom_left(bottom_left);
-        } else if (minLat && maxLon) {
+        } else if (isMinLat && isMaxLon) {
             // Bottom right (South East) corner
             sit->second.set_left(left);
             sit->second.set_top(top);
             sit->second.set_top_left(top_left);
-        } else if (minLat && minLon) {
+        } else if (isMinLat && isMinLon) {
             // Bottom left (South West) corner
             sit->second.set_right(right);
             sit->second.set_top(top);
             sit->second.set_top_right(top_right);
-        } else if (minLon) {
+        } else if (isMinLon) {
             // Left (West) border
             sit->second.set_right(right);
             sit->second.set_top(top);
             sit->second.set_bottom(bottom);
             sit->second.set_top_right(top_right);
             sit->second.set_bottom_right(bottom_right);
-        } else if (maxLat) {
+        } else if (isMaxLat) {
             // Top (North) border
             sit->second.set_right(right);
             sit->second.set_left(left);
             sit->second.set_bottom(bottom);
             sit->second.set_bottom_left(bottom_left);
             sit->second.set_bottom_right(bottom_right);
-        } else if (maxLon) {
+        } else if (isMaxLon) {
             // right (East) border
             sit->second.set_left(left);
             sit->second.set_top(top);
             sit->second.set_bottom(bottom);
             sit->second.set_top_left(top_left);
             sit->second.set_bottom_left(bottom_left);
-        } else if (minLat) {
+        } else if (isMinLat) {
             // Bottom (South) border
             sit->second.set_right(right);
             sit->second.set_left(left);
@@ -821,25 +814,48 @@ void tsunamisquares::World::computeNeighbors(void) {
     
 }
 
-void tsunamisquares::World::computeInvalidDirections(void) {
+void tsunamisquares::World::computeNeighborCoords(void) {
     std::map<UIndex, Square>::iterator     sit;
-    bool                                   new_invalid_directions[4] = {0};
+
+    // precompute the local coordinates of each neighbor, used in plane fitting
+    for(sit=_squares.begin(); sit!=_squares.end(); ++sit){
+    	std::map<UIndex, Vec<2> >   thisNeighborsAndCoords;
+        SquareIDSet				    neighborIDs;
+        SquareIDSet::const_iterator nit;
+
+        neighborIDs = sit->second.get_neighbors_and_self();
+    	for(nit=neighborIDs.begin(); nit!=neighborIDs.end(); nit++){
+    		double xcoord = bg::distance(point_spheq(sit->second.xy()[0], sit->second.xy()[1]),
+    									 point_spheq(squareCenter(*nit)[0], sit->second.xy()[1])) * EARTH_MEAN_RADIUS;
+			double ycoord = bg::distance(point_spheq(sit->second.xy()[0], sit->second.xy()[1]),
+										 point_spheq(sit->second.xy()[0], squareCenter(*nit)[1])) * EARTH_MEAN_RADIUS;
+    	    thisNeighborsAndCoords.insert(std::make_pair(*nit, Vec<2>(xcoord, ycoord)));
+    	}
+
+    	sit->second.set_local_neighbor_coords(thisNeighborsAndCoords);
+    }
+
+}
+
+void tsunamisquares::World::computeInvalidDirections(void) {
+    std::map<UIndex, Square>::iterator sit;
 
     // Find directions that water in each square is not allowed to flow.
 
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+        std::vector<bool>                  new_invalid_directions(4, false);
 
-        if(sit->second.left() == INVALID_INDEX || _squares.find(sit->second.left())->second.height()==0.0){
-        	new_invalid_directions[0] = 1;
+    	if(sit->second.left() == INVALID_INDEX || square(sit->second.left()).xyz()[2]>=0.0){
+        	new_invalid_directions[0] = true;
         }
-        if(sit->second.right() == INVALID_INDEX || _squares.find(sit->second.right())->second.height()==0.0){
-        	new_invalid_directions[1] = 1;
+        if(sit->second.right() == INVALID_INDEX || square(sit->second.right()).xyz()[2]>=0.0){
+        	new_invalid_directions[1] = true;
         }
-        if(sit->second.top() == INVALID_INDEX || _squares.find(sit->second.bottom())->second.height()==0.0){
-        	new_invalid_directions[2] = 1;
+        if(sit->second.bottom() == INVALID_INDEX || square(sit->second.bottom()).xyz()[2]>=0.0){
+        	new_invalid_directions[2] = true;
         }
-        if(sit->second.bottom() == INVALID_INDEX || _squares.find(sit->second.top())->second.height()==0.0){
-        	new_invalid_directions[3] = 1;
+        if(sit->second.top() == INVALID_INDEX || square(sit->second.top()).xyz()[2]>=0.0){
+        	new_invalid_directions[3] = true;
         }
 
         sit->second.set_invalid_directions(new_invalid_directions);
