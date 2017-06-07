@@ -555,13 +555,10 @@ namespace tsunamisquares {
     		bgi::rtree< value, bgi::quadratic<16> > _rtree;
 
 		public:
-    		//void addPoint(const Vec<2> &xy, const unsigned int &i){
-    		//	_rtree.insert(std::make_pair(point_spheq(xy[0], xy[1]), i));
-    		//};
 
-    		void addBox(const box_spheq &b, const unsigned int &i){
-    			//insert box in rtree
-				_rtree.insert(std::make_pair(b, i));
+    		void addBox(const box_spheq &box, const unsigned int &i){
+				//insert box in rtree
+				_rtree.insert(std::make_pair(box, i));
 			};
 
     		std::vector<unsigned int> getNearest(const Vec<2> &xy, const int &numNear) const {

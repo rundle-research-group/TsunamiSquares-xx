@@ -163,7 +163,7 @@ namespace tsunamisquares {
                 _data._friction = new_friction;
             }
             void set_box(const double &dlon, const double &dlat) {
-            	_box = box_spheq(point_spheq(_pos[0]-dlon, _pos[1]-dlat), point_spheq(_pos[0]+dlon, _pos[1]+dlat));
+            	_box = box_spheq(point_spheq(_pos[0]-dlon/2, _pos[1]-dlat/2), point_spheq(_pos[0]+dlon/2, _pos[1]+dlat/2));
             	// set area when we set box
             	_data._area = bg::area(ring())*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
             }
@@ -435,7 +435,7 @@ namespace tsunamisquares {
             SquareIDSet getVertexIDs(void) const;
 
 
-            std::map<double, UIndex> getNearest_rtree(const Vec<2> &location, const int &numNear) const;
+            std::multimap<double, UIndex> getNearest_rtree(const Vec<2> &location, const int &numNear) const;
             std::vector<UIndex> getRingIntersects_rtree(const ring_spheq &ring) const;
             std::vector<UIndex> getBoxIntersects_rtree(const box_spheq &box) const;
             SquareIDSet getNeighborIDs(const UIndex &square_id) const;
@@ -449,7 +449,7 @@ namespace tsunamisquares {
             void computeNeighborCoords(void);
             void computeInvalidDirections(void);
             void fillToSeaLevel(void);
-            void moveSquares(const double dt, const bool accel_bool);
+            void moveSquares(const double dt, const bool accel_bool, const int num_nearest);
             void diffuseSquares(const double dt, const double D);
             Vec<2> getGradient(const UIndex &square_id) const;
             Vec<2> fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids);

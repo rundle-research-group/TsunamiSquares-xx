@@ -343,7 +343,7 @@ if __name__ == "__main__":
         sim_file = "tsunami_output.txt"
         save_file = sim_file.split(".")[0]+".mp4"
         sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
-        FPS = 20 #FRAMES PER SECOND
+        FPS = 10 #FRAMES PER SECOND
         DPI = 100
         T_MAX,T_MIN = sim_data['time'].max(),sim_data['time'].min()
         T_STEP = np.unique(sim_data['time'])[1] - np.unique(sim_data['time'])[0]

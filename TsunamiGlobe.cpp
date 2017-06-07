@@ -124,7 +124,7 @@ void tsunamisquares::World::diffuseSquares(const double dt, const double D) {
 
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
-void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool) {
+void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const int num_nearest) {
     std::map<UIndex, Square>::iterator sit;
     Geodesic geod(EARTH_MEAN_RADIUS, 0);         /* <(^_^<) Happy Coder says: We're good up through this line!*/
 
@@ -134,6 +134,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool) 
 		if(isnan(sit->second.momentum()[0])) std::cout << "ID " << sit->first << ": Momentum NaN" << std::endl;
 		if(isnan(sit->second.accel()[0]))    std::cout << "ID " << sit->first << ": Accel NaN"    << std::endl;
 		if(isnan(sit->second.xyz()[0]))      std::cout << "ID " << sit->first << ": Position NaN" << std::endl;
+		//std::cout<<"ID "<<sit->first<<" Nearest: "<<getNearest_rtree(sit->second.xy(), 1).begin()->second<<std::endl;
     }
 
     // Initialize the updated height and velocity to zero. These are the containers
@@ -148,9 +149,9 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool) 
 
     // Now go through each square and move the water, distribute to neighbors
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-        Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo;
+        Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo, new_center;
         double local_azimuth, distance_traveled, av_velo_mag, lat2, lon2, a12;
-        std::map<double, UIndex> distsNneighbors;
+        std::multimap<double, UIndex> distsNneighbors;
 		std::map<double, UIndex>::const_iterator dnit;
         point_spheq new_bottom_left, new_bottom_right, new_top_left, new_top_right;
 
@@ -199,13 +200,17 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool) 
 			geod.Direct(current_pos[1]+_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
 			new_top_right = point_spheq(lon2, lat2);
 
+			//center, for nearest neighbor retrieval
+			geod.Direct(current_pos[1], current_pos[0], local_azimuth, distance_traveled, lat2, lon2);
+			new_center = Vec<2>(lon2, lat2);
+
+			// Do a quick grab of nearest squares to new location, then do the accurate intersection check
+			distsNneighbors = getNearest_rtree(new_center, num_nearest);
+		    		;
 			// Make Ring from new vertices for accurate overlap calc later
 			point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
 			ring_spheq new_ring;
 			bg::assign_points(new_ring, ring_verts);
-
-			// Do a quick grab of nearest squares to new location, then do the accurate intersection check
-			distsNneighbors = getNearest_rtree(Vec<2>(new_bottom_left.get<0>()+_dlon/2, new_bottom_left.get<1>()+_dlat/2), 5);
 
 
 			// Init these for renormalizing the fractions
@@ -216,7 +221,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool) 
 
 
 			// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
-			int is_any_overlap = 0;
+			bool is_any_overlap = false;
 			for (dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); ++dnit) {
 				std::map<UIndex, Square>::iterator neighbor_it = _squares.find(dnit->second);
 				std::vector<poly_spheq> output;
@@ -225,19 +230,22 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool) 
 				bg::intersection(new_ring, neighbor_it->second.box(), output);
 
 				if(output.size() != 0){
+					is_any_overlap = true;
+
 					BOOST_FOREACH(poly_spheq const& p, output)
 					{
 						overlap_area = bg::area(p)*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
 					}
 
-					this_fraction = overlap_area/neighbor_it->second.area();
+					this_fraction = overlap_area/sit->second.area();
+
 					fraction_sum += this_fraction;
 					originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
-					is_any_overlap++;
 				}
+
 			}
 
-			// If no overlap, we want to distribute water to nearest square
+			// If no overlap, we'll just distribute water to nearest square
 			// TODO: We should implement a line (geodesicLine? bg::Linestring?) from origin to destination,
 			//       and accurately stop (reflect) the square when it hits invalid areas.
 			if(!is_any_overlap){
@@ -271,7 +279,6 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool) 
 				Vec<2> M  = neighbor_it->second.updated_momentum();
 				neighbor_it->second.set_updated_momentum(M+dM);
 
-
 			}
         }
     }
@@ -282,18 +289,13 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool) 
 
         sit->second.set_height(sit->second.updated_height());
 
-        velo_to_set = sit->second.updated_momentum()/(sit->second.mass());
-
-        // Check for invalid directions of motion (eg at edges or near land)
-        // TODO: add parameter to toggle btwn elastic and inelastic collisions with edges (currently inelastic).
-        //if(sit->second.invalid_directions()[0] && velo_to_set[0]<0.0) velo_to_set[0] = 0.0;
-        //if(sit->second.invalid_directions()[1] && velo_to_set[0]>0.0) velo_to_set[0] = 0.0;
-        //if(sit->second.invalid_directions()[2] && velo_to_set[1]<0.0) velo_to_set[1] = 0.0;
-        //if(sit->second.invalid_directions()[3] && velo_to_set[1]>0.0) velo_to_set[1] = 0.0;
+        if(sit->second.height()!=0.0){
+        	velo_to_set = sit->second.updated_momentum()/(sit->second.mass());
+        }else{
+        	velo_to_set = Vec<2>(0.0, 0.0);
+        }
 
         sit->second.set_velocity(velo_to_set);
-
-
     }
     
 }
@@ -316,10 +318,10 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id) {
         new_accel = grav_accel + friction_accel;
 
         // Check for invalid directions of motion (eg at edges or near land)
-        if(square_it->second.invalid_directions()[0] && new_accel[0]<0.0) new_accel[0] = 0.0;
-        if(square_it->second.invalid_directions()[1] && new_accel[0]>0.0) new_accel[0] = 0.0;
-        if(square_it->second.invalid_directions()[2] && new_accel[1]<0.0) new_accel[1] = 0.0;
-        if(square_it->second.invalid_directions()[3] && new_accel[1]>0.0) new_accel[1] = 0.0;
+        //if(square_it->second.invalid_directions()[0] && new_accel[0]<0.0) new_accel[0] = 0.0;
+        //if(square_it->second.invalid_directions()[1] && new_accel[0]>0.0) new_accel[0] = 0.0;
+        //if(square_it->second.invalid_directions()[2] && new_accel[1]<0.0) new_accel[1] = 0.0;
+        //if(square_it->second.invalid_directions()[3] && new_accel[1]>0.0) new_accel[1] = 0.0;
 
         // Set the acceleration
         square_it->second.set_accel(new_accel);
@@ -337,20 +339,20 @@ tsunamisquares::SquareIDSet tsunamisquares::World::get_neighbors_for_accel(const
     thisLevel = squareLevel(square_id);
     // Grab all valid neighbors
     all_neighbors_and_self = _squares.find(square_id)->second.get_neighbors_and_self();
-    
-    // Only include the next nearest neighbors if they are not "hi and dry".
+
+    // Only include the neighbors if they are not "hi and dry".
     // A wave incident on the beach is not pushed backwards by the tall beach in front of it.
     // The wave only falls back into the ocean after it has creeped up the beach and has water
     // above and below it that define a slope for the water surface.
     
+
+
     for (id_it=all_neighbors_and_self.begin(); id_it!=all_neighbors_and_self.end(); ++id_it) {
-        /*if (!( (squareLevel(*id_it) == 0) && (squareDepth(*id_it) >= 0))) {
-            valid_squares.insert(*id_it);
-        }*/
-    	// TODO: Do we want to use lower dry cells in acceleration calc?
-        if (_squares.find(*id_it)->second.height()>0.0 || squareDepth(*id_it) < thisLevel) {
-			valid_squares.insert(*id_it);
-		}
+    	// For now we are including low dry cells in acceleration calc (ie a formerly wet cell that ran out of water termporarily)
+    	/* <(^_^v) Happy Coder says: Lets turn this check off and see what the effects are*/\
+		// TODO: Here's where we might need a check on neighbors' water status.
+		//        e.g. Are they dry, what's their level, height, etc.
+		valid_squares.insert(*id_it);
     }
     
     return valid_squares;
@@ -372,6 +374,7 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
     
 	neighborsAndCoords = square(this_id).local_neighbor_coords();
 
+	// loop over the provided valid neighbor ids, get their relative positions from neighborsAndCoords
     for (id_it=square_ids.begin(); id_it!=square_ids.end(); ++id_it) {
         x_vals.push_back(neighborsAndCoords[*id_it][0]);
         y_vals.push_back(neighborsAndCoords[*id_it][1]);
@@ -466,6 +469,7 @@ tsunamisquares::Vec<2> tsunamisquares::World::getGradient_planeFit(const UIndex 
 
 tsunamisquares::Vec<2> tsunamisquares::World::getGradient(const UIndex &square_id) const {
     std::map<UIndex, Square>::const_iterator square_it = _squares.find(square_id);
+    std::map<UIndex, Vec<2> > neighborsAndCoords;
     Vec<2> gradient;
     bool debug = false;
     
@@ -497,11 +501,13 @@ tsunamisquares::Vec<2> tsunamisquares::World::getGradient(const UIndex &square_i
         double h_bottom = _squares.find(bottomID)->second.height();
         double h_mid    = square_it->second.height();
         
+        neighborsAndCoords = square_it->second.local_neighbor_coords();
+
         // X,Y of neighbor squares
-        Vec<2> center_L = squareCenter(leftID);
-        Vec<2> center_R = squareCenter(rightID);
-        Vec<2> center_T = squareCenter(topID);
-        Vec<2> center_B = squareCenter(bottomID);
+        Vec<2> center_L = neighborsAndCoords[leftID];
+        Vec<2> center_R = neighborsAndCoords[rightID];
+        Vec<2> center_T = neighborsAndCoords[topID];
+        Vec<2> center_B = neighborsAndCoords[bottomID];
         
         // ================================================================
         // Gradient = (dz/dx, dz/dy)
@@ -581,15 +587,15 @@ void tsunamisquares::World::bumpCenter(const double bump_height) {
 	UIndex centralID = getNearest_rtree(centerLoc, 1).begin()->second;
 
 	for (int i = 0; i < 2; i ++ ){
-		deformBottom(centralID + num_lons()*i,   bump_height/2.0);
-		deformBottom(centralID + num_lons()*i+1, bump_height/2.0);
+		deformBottom(centralID + num_lons()*(i-1),   bump_height/2.0);
+		deformBottom(centralID + num_lons()*(i-1)+1, bump_height/2.0);
 	}
 	for (int i = 0; i < 4; i ++ ){
-		//if(i==1 || i==2){deformBottom(centralID + num_lons()*(i-1)-1 , bump_height/2.0);}
-		deformBottom(centralID + num_lons()*(i-1)-1 , bump_height/2.0);
-		deformBottom(centralID + num_lons()*(i-1)   , bump_height/2.0);
-		deformBottom(centralID + num_lons()*(i-1)+1 , bump_height/2.0);
-		deformBottom(centralID + num_lons()*(i-1)+2 , bump_height/2.0);
+		//if(i==1 || i==2){deformBottossh(centralID + num_lons()*(i-1)-1 , bump_height/2.0);}
+		deformBottom(centralID + num_lons()*(i-2)-1 , bump_height/2.0);
+		deformBottom(centralID + num_lons()*(i-2)   , bump_height/2.0);
+		deformBottom(centralID + num_lons()*(i-2)+1 , bump_height/2.0);
+		deformBottom(centralID + num_lons()*(i-2)+2 , bump_height/2.0);
 		//if(i==1 || i==2){deformBottom(centralID + num_lons()*(i-1)+2 , bump_height/2.0);}
 	}
 }
@@ -659,9 +665,9 @@ double tsunamisquares::World::getMinSize() const {
 
 
 // Much faster n-nearest neighbor search using an RTree
-std::map<double, tsunamisquares::UIndex> tsunamisquares::World::getNearest_rtree(const Vec<2> &location, const int &numNear)const {
+std::multimap<double, tsunamisquares::UIndex> tsunamisquares::World::getNearest_rtree(const Vec<2> &location, const int &numNear)const {
     std::vector<UIndex>						  nIDs;
-    std::map<double, UIndex>                  neighbors;
+    std::multimap<double, UIndex>             neighbors;
     double 									  square_dist;
 
     //Use RTree query to get numNear nearest neighbors
@@ -669,10 +675,10 @@ std::map<double, tsunamisquares::UIndex> tsunamisquares::World::getNearest_rtree
 
     // Compute distance from "location" to the center of each neighbor.
     for (int i=0; i<nIDs.size(); ++i) {
-		square_dist = squareCenter(nIDs[i]).dist(location);
+		square_dist = bg::distance(point_spheq(squareCenter(nIDs[i])[0], squareCenter(nIDs[i])[1]),
+									point_spheq(location[0], location[1]))*EARTH_MEAN_RADIUS;
 		neighbors.insert(std::make_pair(square_dist, nIDs[i]));
 	}
-    
     return neighbors;
 }
 
@@ -843,7 +849,7 @@ void tsunamisquares::World::computeInvalidDirections(void) {
     // Find directions that water in each square is not allowed to flow.
 
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-        std::vector<bool>                  new_invalid_directions(4, false);
+        std::vector<bool>       new_invalid_directions(4, false);
 
     	if(sit->second.left() == INVALID_INDEX || square(sit->second.left()).xyz()[2]>=0.0){
         	new_invalid_directions[0] = true;
@@ -1226,7 +1232,7 @@ int tsunamisquares::World::deformFromFile(const std::string &file_name) {
     double          dz;
     Vec<2>          location;
     std::map<UIndex, Square>::iterator sit;
-    std::map<double, UIndex>		   nearestMap;
+    std::multimap<double, UIndex>	   nearestMap;
     LatLonDepth     square_lld;
 
     in_file.open(file_name.c_str());

@@ -105,6 +105,7 @@ int main (int argc, char **argv) {
 	bool	bump_bool						= atof(param_values[17].c_str());
     // How high the central bump should be
 	double 	bump_height 					= atof(param_values[18].c_str());
+	double  num_nearest						= atof(param_values[19].c_str());
 
 
     // Header for the simulation output
@@ -174,7 +175,6 @@ int main (int argc, char **argv) {
     }else{
     	//   == DEFORM FROM FILE ==
     	std::cout << "\t Deforming from file" << std::endl;
-
 		this_world.deformFromFile(deformation_file);
 
     }
@@ -208,7 +208,7 @@ int main (int argc, char **argv) {
         }
         // Move the squares
         if(move_bool) {
-        	this_world.moveSquares(dt, accel_bool);
+        	this_world.moveSquares(dt, accel_bool, num_nearest);
         }
         if(diffuse_bool) {
         	this_world.diffuseSquares(dt, D); //smoothing operation
