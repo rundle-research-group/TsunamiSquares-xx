@@ -46,9 +46,132 @@ void tsunamisquares::World::fillToSeaLevel(void) {
 }
 
 
+// Precompute diffusion fractions for each square to its neighbors.
+void tsunamisquares::World::computeDiffussionFracts(const double dt, const double D){
+	std::map<UIndex, Square>::iterator sit;
+	Geodesic geod(EARTH_MEAN_RADIUS, 0);
+
+
+	// TODO: replace this simple model with a physically-based one.
+
+
+    //TODO: Check that we don't diffuse into high dry squares
+	for(sit=_squares.begin(); sit!=_squares.end(); sit++){
+		double         					   lat2, lon2, this_fraction, vertex_distance;
+		Vec<2>         					   current_pos;
+		std::multimap<double,UIndex>       distsNneighbors;
+		std::multimap<double,UIndex>::const_iterator        dnit;
+		point_spheq                        new_bottom_left, new_top_left, new_top_right, new_bottom_right;
+		std::map<UIndex, double>           collected_fracts;
+		std::map<UIndex, double>::iterator frac_it;
+
+		// Roughly matches the area change calculated in the naive method.
+		vertex_distance = sqrt(2*sit->second.area()*(2+D*dt-2*sqrt(1+D*dt)));
+
+		current_pos = sit->second.xy();
+
+		// Each corner will spread out, and that new ring will intersect some number of squares
+
+		//bottom left
+		geod.Direct(current_pos[1]-_dlat/2, current_pos[0]-_dlon/2, -135, vertex_distance, lat2, lon2);
+		new_bottom_left = point_spheq(lon2, lat2);
+
+		//top left
+		geod.Direct(current_pos[1]+_dlat/2, current_pos[0]-_dlon/2, -45, vertex_distance, lat2, lon2);
+		new_top_left = point_spheq(lon2, lat2);
+
+		//top right
+		geod.Direct(current_pos[1]+_dlat/2, current_pos[0]+_dlon/2, 45, vertex_distance, lat2, lon2);
+		new_top_right = point_spheq(lon2, lat2);
+
+		//bottom right
+		geod.Direct(current_pos[1]-_dlat/2, current_pos[0]+_dlon/2, 135, vertex_distance, lat2, lon2);
+		new_bottom_right = point_spheq(lon2, lat2);
+
+		// Make Ring from new vertices for accurate overlap calc
+		point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
+		ring_spheq new_ring;
+		bg::assign_points(new_ring, ring_verts);
+
+		// get nearest 25 to find the squares to which we need to diffuse
+		distsNneighbors = getNearest_rtree(current_pos, 25);
+
+		// Find overlap percentage
+		double fraction_sum=0;
+		for (dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); ++dnit) {
+			std::vector<poly_spheq> output;
+
+			bg::intersection(new_ring, square(dnit->second).box(), output);
+
+			if(output.size()!=0){
+				BOOST_FOREACH(poly_spheq const& p, output)
+				{
+					this_fraction = bg::area(p)/bg::area(new_ring);;
+				}
+				collected_fracts.insert(std::make_pair(dnit->second, this_fraction));
+				fraction_sum += this_fraction;
+			}
+		}
+
+		// If any water diffused to areas with no squares, put it back in the source square.
+		if(fraction_sum < 1){
+			collected_fracts[sit->first] += 1-fraction_sum;
+		}else if(fraction_sum > 1){
+			for(frac_it=collected_fracts.begin(); frac_it!=collected_fracts.end(); frac_it++){
+				frac_it->second = frac_it->second/fraction_sum;
+			}
+		}
+
+		sit->second.set_diffusion_fractions(collected_fracts);
+	}
+
+
+
+}
+
+// Diffusion: Remove a volume of water from each square and distribute it to the neighbors.
+void tsunamisquares::World::diffuseSquaresSpherical(void) {
+    std::map<UIndex, Square>::iterator       sit;
+    double                                   add_height;
+    Vec<2>                                   add_momentum;
+    
+
+    // Initialize updated_heights and momenta, will use this to store the net height and momentum changes
+    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+        sit->second.set_updated_height(0.0);
+        Vec<2> m; m[0] = m[1] = 0.0;
+        sit->second.set_updated_momentum(m);
+    }
+
+	// Loop through squares
+	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+		if(sit->second.height() > 0){
+			std::map<UIndex, double>			     diffusion_fracts;
+			std::map<UIndex, double>::const_iterator dfit;
+
+			diffusion_fracts = sit->second.diffusion_fractions();
+
+			for(dfit = diffusion_fracts.begin(); dfit != diffusion_fracts.end(); dfit++){
+
+				add_height = sit->second.height() * dfit->second;
+				square(dfit->first).set_updated_height(square(dfit->first).updated_height() + add_height);
+
+				add_momentum = sit->second.momentum() * dfit->second;
+				square(dfit->first).set_updated_momentum(square(dfit->first).updated_momentum() + add_momentum);
+			}
+		}
+	}
+
+    // Set the heights and velocities based on the changes
+    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+        sit->second.set_height( sit->second.updated_height() );
+        sit->second.set_velocity( sit->second.updated_momentum() / sit->second.mass());
+    }
+}
+
 // Diffusion: Remove a volume of water from each square and distribute it to the neighbors.
 // Model: area_change = diff_const*time_step
-void tsunamisquares::World::diffuseSquares(const double dt, const double D) {
+void tsunamisquares::World::diffuseSquaresToNeighbors(const double dt, const double D) {
     std::map<UIndex, Square>::iterator  it;
     SquareIDSet                         neighborIDs;
     std::map<UIndex, Square>::iterator  nit;
@@ -56,7 +179,7 @@ void tsunamisquares::World::diffuseSquares(const double dt, const double D) {
     Vec<2>                              momentum_change;
     SquareIDSet::iterator               id_it;
     bool debug = false;
-    
+
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //TODO: Check that I do not diffuse into dry squares (wetting them artificially)
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -85,25 +208,25 @@ void tsunamisquares::World::diffuseSquares(const double dt, const double D) {
                 std::cout << "new level: " << new_level << std::endl;
                 std::cout << "-> neighbors " << std::endl;
             }
-            
+
             // For continuity, must self-add 1/4 of the volume change to edges and 1/2 to corners.
             // This also balances the momentum distribution.
             int minLat = squareLatLon(it->first)[0] == min_lat();
             int maxLat = squareLatLon(it->first)[0] == max_lat();
             int minLon = squareLatLon(it->first)[1] == min_lon();
             int maxLon = squareLatLon(it->first)[1] == max_lon();
-            int cornerSum = minLat + minLon + maxLon + maxLat;    
+            int cornerSum = minLat + minLon + maxLon + maxLat;
             if (cornerSum == 1) {
                 height_change += volume_change/( it->second.area()*4.0);
             } else if (cornerSum == 2) {
                 height_change += volume_change/( it->second.area()*2.0);
             }
-            
+
             // Add the height change to the updated height
             it->second.set_updated_height(it->second.updated_height() + height_change);
 
             neighborIDs = it->second.get_valid_nearest_neighbors();
-            
+
             for (id_it=neighborIDs.begin(); id_it!=neighborIDs.end(); ++id_it) {
                 nit = _squares.find(*id_it);
                 // Divide up the diffused volume equally amongst neighbors
@@ -113,14 +236,13 @@ void tsunamisquares::World::diffuseSquares(const double dt, const double D) {
             }
         }
     }
-    
+
     // Reset the heights and velocities based on the changes
     for (it=_squares.begin(); it!=_squares.end(); ++it) {
         it->second.set_height( it->second.updated_height() );
         it->second.set_velocity( it->second.updated_momentum() / it->second.mass());
     }
 }
-
 
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
@@ -206,7 +328,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
 			// Do a quick grab of nearest squares to new location, then do the accurate intersection check
 			distsNneighbors = getNearest_rtree(new_center, num_nearest);
-		    		;
+
 			// Make Ring from new vertices for accurate overlap calc later
 			point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
 			ring_spheq new_ring;
@@ -682,16 +804,16 @@ std::multimap<double, tsunamisquares::UIndex> tsunamisquares::World::getNearest_
     return neighbors;
 }
 
-std::vector<tsunamisquares::UIndex> tsunamisquares::World::getRingIntersects_rtree(const ring_spheq &ring)const {
-    std::vector<UIndex>						  intersects;
+tsunamisquares::SquareIDSet tsunamisquares::World::getRingIntersects_rtree(const ring_spheq &ring)const {
+    SquareIDSet	  intersects;
     //Use RTree query to get all boxes that the provided ring intersects (edges and contained within)
     intersects = _square_rtree.getRingIntersects(ring);
 
     return intersects;
 }
 
-std::vector<tsunamisquares::UIndex> tsunamisquares::World::getBoxIntersects_rtree(const box_spheq &box)const {
-    std::vector<UIndex>						  intersects;
+tsunamisquares::SquareIDSet tsunamisquares::World::getBoxIntersects_rtree(const box_spheq &box)const {
+	SquareIDSet	  intersects;
     //Use RTree query to get all boxes that the provided box intersects (edges and contained within)
     intersects = _square_rtree.getBoxIntersects(box);
 
@@ -825,16 +947,30 @@ void tsunamisquares::World::computeNeighborCoords(void) {
 
     // precompute the local coordinates of each neighbor, used in plane fitting
     for(sit=_squares.begin(); sit!=_squares.end(); ++sit){
-    	std::map<UIndex, Vec<2> >   thisNeighborsAndCoords;
-        SquareIDSet				    neighborIDs;
-        SquareIDSet::const_iterator nit;
+    	std::map<UIndex, Vec<2> >           thisNeighborsAndCoords;
+        SquareIDSet				            neighborIDs;
+        SquareIDSet::const_iterator         nit;
+        Vec<2>                              thispos;
+
+        thispos = sit->second.xy();
 
         neighborIDs = sit->second.get_neighbors_and_self();
     	for(nit=neighborIDs.begin(); nit!=neighborIDs.end(); nit++){
-    		double xcoord = bg::distance(point_spheq(sit->second.xy()[0], sit->second.xy()[1]),
-    									 point_spheq(squareCenter(*nit)[0], sit->second.xy()[1])) * EARTH_MEAN_RADIUS;
-			double ycoord = bg::distance(point_spheq(sit->second.xy()[0], sit->second.xy()[1]),
-										 point_spheq(sit->second.xy()[0], squareCenter(*nit)[1])) * EARTH_MEAN_RADIUS;
+    		Vec<2> neighpos = square(*nit).xy();
+
+    		double xdiff = (neighpos[0] - thispos[0]);
+			double ydiff = (neighpos[1] - thispos[1]);
+			int xsign = ((xdiff>0)-(xdiff<0));
+			int ysign = ((ydiff>0)-(ydiff<0));
+    		// best guess at a catch for getting the sign right across the int date line
+    		if( (thispos[0]<-90 && neighpos[0]>90) || (thispos[0]>90 && neighpos[0]<-90) ){
+    			xsign *= -1;
+    		}
+
+    		double xcoord = xsign*bg::distance(point_spheq(thispos[0], thispos[1]),
+    									 point_spheq(neighpos[0], thispos[1])) * EARTH_MEAN_RADIUS;
+			double ycoord = ysign*bg::distance(point_spheq(thispos[0], thispos[1]),
+										 point_spheq(thispos[0], neighpos[1])) * EARTH_MEAN_RADIUS;
     	    thisNeighborsAndCoords.insert(std::make_pair(*nit, Vec<2>(xcoord, ycoord)));
     	}
 

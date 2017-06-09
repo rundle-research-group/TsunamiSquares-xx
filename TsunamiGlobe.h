@@ -80,6 +80,8 @@ namespace tsunamisquares {
 
             std::vector<bool>         _invalid_directions;
 
+            std::map<UIndex, double>  _diffusion_fractions;
+
             Vec<3> 	                  _pos;
 
             box_spheq                 _box;
@@ -213,6 +215,14 @@ namespace tsunamisquares {
 
             void set_local_neighbor_coords(const std::map<UIndex, Vec<2> > coord_map) {
             	_local_neighbor_coords = coord_map;
+            }
+
+            std::map<UIndex, double > diffusion_fractions(void) const {
+            	return _diffusion_fractions;
+            }
+
+            void set_diffusion_fractions(const std::map<UIndex, double> fract_map) {
+            	_diffusion_fractions = fract_map;
             }
 
             //  All functions with top/bottom/left/right are setting the IDs of the corresponding
@@ -436,8 +446,8 @@ namespace tsunamisquares {
 
 
             std::multimap<double, UIndex> getNearest_rtree(const Vec<2> &location, const int &numNear) const;
-            std::vector<UIndex> getRingIntersects_rtree(const ring_spheq &ring) const;
-            std::vector<UIndex> getBoxIntersects_rtree(const box_spheq &box) const;
+            SquareIDSet getRingIntersects_rtree(const ring_spheq &ring) const;
+            SquareIDSet getBoxIntersects_rtree(const box_spheq &box) const;
             SquareIDSet getNeighborIDs(const UIndex &square_id) const;
             
             /// Test ///
@@ -450,7 +460,9 @@ namespace tsunamisquares {
             void computeInvalidDirections(void);
             void fillToSeaLevel(void);
             void moveSquares(const double dt, const bool accel_bool, const int num_nearest);
-            void diffuseSquares(const double dt, const double D);
+            void computeDiffussionFracts(const double dt, const double D);
+            void diffuseSquaresSpherical(void);
+            void diffuseSquaresToNeighbors(const double dt, const double D);
             Vec<2> getGradient(const UIndex &square_id) const;
             Vec<2> fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids);
             tsunamisquares::Vec<2> getGradient_planeFit(const UIndex &square_id);

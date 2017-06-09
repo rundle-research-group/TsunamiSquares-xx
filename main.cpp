@@ -84,28 +84,30 @@ int main (int argc, char **argv) {
     bool	move_bool						= atof(param_values[4].c_str());
 	bool	accel_bool						= atof(param_values[5].c_str());
 	bool	diffuse_bool					= atof(param_values[6].c_str());
+	// Choose naive cartesian diffusion method or accurate spherical method.
+	bool	sphere_diffuse_bool				= atof(param_values[7].c_str());
     // Diffusion constant (fit to a reasonable looking sim)
-    double 	D 								= atof(param_values[7].c_str()); //140616.45;
+    double 	D 								= atof(param_values[8].c_str()); //140616.45;
     // Time step in seconds
-    double  dt_param						= atof(param_values[8].c_str());
+    double  dt_param						= atof(param_values[9].c_str());
     // Number of times to move squares
-    int 	N_steps 						= atof(param_values[9].c_str()); //number of time steps 10 is fine, to see a bit of movement
+    int 	N_steps 						= atof(param_values[10].c_str()); //number of time steps 10 is fine, to see a bit of movement
     // because boundaries aren't defined very well, we limit the time steps whenever the water hits the walls of things
     // Updating intervals, etc.
-    int 	current_step 					= atof(param_values[10].c_str());
-    int 	update_step 					= atof(param_values[11].c_str());
-    int 	save_step 						= atof(param_values[12].c_str());
-    double 	time 							= atof(param_values[13].c_str());
-    int 	output_num_digits_for_percent 	= atof(param_values[14].c_str());
+    int 	current_step 					= atof(param_values[11].c_str());
+    int 	update_step 					= atof(param_values[12].c_str());
+    int 	save_step 						= atof(param_values[13].c_str());
+    double 	time 							= atof(param_values[14].c_str());
+    int 	output_num_digits_for_percent 	= atof(param_values[15].c_str());
     //Boolean to decide whether to flatten the seafloor before running, for testing purposes
-    bool	flatten_bool					= atof(param_values[15].c_str());
+    bool	flatten_bool					= atof(param_values[16].c_str());
     // Flattening the bathymetry to a constant depth (negative for below sea level)
-	double 	flat_depth 						= atof(param_values[16].c_str());
+	double 	flat_depth 						= atof(param_values[17].c_str());
     //Boolean to decide whether to use bump instead deformation file, for testing purposes
-	bool	bump_bool						= atof(param_values[17].c_str());
+	bool	bump_bool						= atof(param_values[18].c_str());
     // How high the central bump should be
-	double 	bump_height 					= atof(param_values[18].c_str());
-	double  num_nearest						= atof(param_values[19].c_str());
+	double 	bump_height 					= atof(param_values[19].c_str());
+	double  num_nearest						= atof(param_values[20].c_str());
 
 
     // Header for the simulation output
@@ -143,6 +145,10 @@ int main (int argc, char **argv) {
     }else{
     	dt = dt_param;
     	std::cout << "Using provided time step of " << dt <<" seconds..." << std::endl;
+    }
+    if(diffuse_bool && sphere_diffuse_bool){
+		std::cout << "Precomputing diffusion behavior..." << std::endl;
+		this_world.computeDiffussionFracts(dt, D);
     }
 
     // Gather model information
@@ -206,13 +212,22 @@ int main (int argc, char **argv) {
                 this_world.write_square_ascii(out_file, time, *it);
             }
         }
+
         // Move the squares
         if(move_bool) {
         	this_world.moveSquares(dt, accel_bool, num_nearest);
         }
+
+        // Diffuse (smooth) the squares
         if(diffuse_bool) {
-        	this_world.diffuseSquares(dt, D); //smoothing operation
+        	if(sphere_diffuse_bool){
+        		this_world.diffuseSquaresSpherical();
+        	} else{
+        		this_world.diffuseSquaresToNeighbors(dt, D);
+        	}
         }
+
+        // Increment time
         time += dt;
         current_step += 1;
     }
@@ -329,14 +344,6 @@ int main (int argc, char **argv) {
     this_world.deformBottom(bottom_left,  mid_bump);
     */
 //////////// Chalkboard ////////////////
-
-// Grab all squares and print
-//    ids = this_world.getSquareIDs();
-//    
-//    for (it=ids.begin(); it!=ids.end(); ++it) {
-//        this_world.printSquare(*it);
-//    }
-
 
     // Creating up sloping beach over the bottom 5 rows
 //    assertThrow(num_lats == num_lons, "lats and lons mismatch");
