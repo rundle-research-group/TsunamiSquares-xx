@@ -20,6 +20,7 @@
 
 #include "TsunamiGlobe.h"
 #include <cassert>
+#include <numeric>
 
 #define assertThrow(COND, ERR_MSG) assert(COND);
 
@@ -256,7 +257,6 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 		if(isnan(sit->second.momentum()[0])) std::cout << "ID " << sit->first << ": Momentum NaN" << std::endl;
 		if(isnan(sit->second.accel()[0]))    std::cout << "ID " << sit->first << ": Accel NaN"    << std::endl;
 		if(isnan(sit->second.xyz()[0]))      std::cout << "ID " << sit->first << ": Position NaN" << std::endl;
-		//std::cout<<"ID "<<sit->first<<" Nearest: "<<getNearest_rtree(sit->second.xy(), 1).begin()->second<<std::endl;
     }
 
     // Initialize the updated height and velocity to zero. These are the containers
@@ -295,10 +295,10 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
         //If the square didn't move, or has run out of water, immediately distribute it's water back to itself
         //   (along with any contributions from other squares)
-        if(average_velo == Vec<2>(0.0, 0.0) || sit->second.height() == 0.0){
+        /*if(average_velo == Vec<2>(0.0, 0.0) || sit->second.height() == 0.0){
         	sit->second.set_updated_height(sit->second.updated_height() + sit->second.height());
         	sit->second.set_updated_momentum(sit->second.updated_momentum() + sit->second.momentum());
-        }else{
+        }else{*/
         	// Calculate azimuth for geodesic calculation
 			if(atan2(average_velo[1], average_velo[0]) >= -(M_PI/2)){
 				local_azimuth = 90-atan2(average_velo[1], average_velo[0])*(180/M_PI);
@@ -310,10 +310,6 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			geod.Direct(current_pos[1]-_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
 			new_bottom_left = point_spheq(lon2, lat2);
 
-			//bottom right
-			geod.Direct(current_pos[1]-_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
-			new_bottom_right = point_spheq(lon2, lat2);
-
 			//top left
 			geod.Direct(current_pos[1]+_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
 			new_top_left = point_spheq(lon2, lat2);
@@ -322,12 +318,17 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			geod.Direct(current_pos[1]+_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
 			new_top_right = point_spheq(lon2, lat2);
 
+			//bottom right
+			geod.Direct(current_pos[1]-_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+			new_bottom_right = point_spheq(lon2, lat2);
+
 			//center, for nearest neighbor retrieval
 			geod.Direct(current_pos[1], current_pos[0], local_azimuth, distance_traveled, lat2, lon2);
 			new_center = Vec<2>(lon2, lat2);
 
-			// Do a quick grab of nearest squares to new location, then do the accurate intersection check
+			// Do a quick grab of nearest squares to new location, then do the accurate intersection check later
 			distsNneighbors = getNearest_rtree(new_center, num_nearest);
+
 
 			// Make Ring from new vertices for accurate overlap calc later
 			point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
@@ -340,6 +341,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			double fraction_sum = 0.0;
 			std::map<UIndex, double> originalFractions, renormFractions;
 			std::map<UIndex, double>::iterator frac_it;
+			std::map<UIndex, double> x_fracmap, y_fracmap;
 
 
 			// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
@@ -349,17 +351,38 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				std::vector<poly_spheq> output;
 				double overlap_area=0.0;
 
-				bg::intersection(new_ring, neighbor_it->second.box(), output);
+				bg::intersection(new_ring, neighbor_it->second.polygon(), output);
 
 				if(output.size() != 0){
 					is_any_overlap = true;
 
-					BOOST_FOREACH(poly_spheq const& p, output)
+					BOOST_FOREACH(poly_spheq p, output)
 					{
-						overlap_area = bg::area(p)*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
+						bg::unique(p);
+
+						//overlap_area = bg::area(p)*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
+
+					    PolygonArea geo_poly(geod);
+					    bg::for_each_point(p, make_geo_poly<point_spheq>(geo_poly));
+					    double perimeter;
+					    unsigned n = geo_poly.Compute(true, true, perimeter, overlap_area);
+
+						this_fraction = overlap_area/sit->second.area();
+						std::cout << sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction <<std::endl;
+						if(sit->first != dnit->second && this_fraction>0.9){
+							//	std::cout<<std::fixed<<"ID "<<sit->first<<": ("<<dnit->second<<", "<<this_fraction<<")"<<std::endl;
+							std::cout << sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction <<std::endl;
+							std::cout << "\t square:   "<< sit->second.xy()+Vec<2>(-_dlon/2, -_dlat/2)<<"; "<< sit->second.xy()+Vec<2>(-_dlon/2, _dlat/2)<<"; "<<
+									                       sit->second.xy()+Vec<2>(_dlon/2, _dlat/2)<<"; "<< sit->second.xy()+Vec<2>(_dlon/2, -_dlat/2) << std::endl;
+							std::cout << "\t overlap:  "; bg::for_each_point(p, print_boost_coords<point_spheq>);std::cout << std::endl;
+							std::cout << "\t neighbor: "<< square(dnit->second).xy()+Vec<2>(-_dlon/2, -_dlat/2)<<"; "<< square(dnit->second).xy()+Vec<2>(-_dlon/2, _dlat/2)<<"; "<<
+									                       square(dnit->second).xy()+Vec<2>(_dlon/2, _dlat/2)<<"; "<< square(dnit->second).xy()+Vec<2>(_dlon/2, -_dlat/2) << std::endl;
+						}
 					}
 
-					this_fraction = overlap_area/sit->second.area();
+					//if(this_fraction > 1.0){
+					//	std::cout<<std::fixed<<"ID "<<sit->first<<": ("<<dnit->second<<", "<<this_fraction<<")"<<std::endl;
+					//}
 
 					fraction_sum += this_fraction;
 					originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
@@ -402,7 +425,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				neighbor_it->second.set_updated_momentum(M+dM);
 
 			}
-        }
+        //}
     }
 
     // Loop again over squares to set new velocity and height from accumulated height and momentum
@@ -486,6 +509,7 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
     // http://stackoverflow.com/questions/1400213/3d-least-squares-plane
     // --------------------------------------------------------------------
     std::vector<double>             x_vals, y_vals, z_vals;
+    double 							xav, yav, zav;
     SquareIDSet::const_iterator                      id_it;
     Vec<2>                                        gradient;
     SquareIDSet::const_iterator iit;
@@ -502,23 +526,26 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
         y_vals.push_back(neighborsAndCoords[*id_it][1]);
         z_vals.push_back(squareLevel(*id_it));
     }
+    xav = std::accumulate( x_vals.begin(), x_vals.end(), 0.0)/x_vals.size();
+    yav = std::accumulate( y_vals.begin(), y_vals.end(), 0.0)/y_vals.size();
+    zav = std::accumulate( z_vals.begin(), z_vals.end(), 0.0)/z_vals.size();
 
     // Build the b vector and the A matrix.
     // Single index for matrix, array style. A[i][j] = A_vec[i*3 + j],  N_cols=3
     for (i=0; i<N; ++i) {
             
-        b[0] += x_vals[i]*z_vals[i];
-        b[1] += y_vals[i]*z_vals[i];
-        b[2] += z_vals[i];
+        b[0] += (x_vals[i]-xav)*(z_vals[i]-zav);
+        b[1] += (y_vals[i]-yav)*(z_vals[i]-zav);
+        b[2] += (z_vals[i]-zav);
         
-        A[0] += x_vals[i]*x_vals[i];
-        A[1] += x_vals[i]*y_vals[i];
-        A[2] += x_vals[i];
-        A[3] += x_vals[i]*y_vals[i];
-        A[4] += y_vals[i]*y_vals[i];
-        A[5] += y_vals[i];
-        A[6] += x_vals[i];
-        A[7] += y_vals[i];
+        A[0] += (x_vals[i]-xav)*(x_vals[i]-xav);
+        A[1] += (x_vals[i]-xav)*(y_vals[i]-yav);
+        A[2] += (x_vals[i]-xav);
+        A[3] += (x_vals[i]-xav)*(y_vals[i]-yav);
+        A[4] += (y_vals[i]-yav)*(y_vals[i]-yav);
+        A[5] += (y_vals[i]-yav);
+        A[6] += (x_vals[i]-xav);
+        A[7] += (y_vals[i]-yav);
         A[8] += 1.0;
     }
 

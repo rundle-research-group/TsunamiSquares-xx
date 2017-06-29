@@ -33,18 +33,19 @@
 #define assertThrow(COND, ERR_MSG) assert(COND);
 
 #include <GeographicLib/Geodesic.hpp>
+#include <GeographicLib/PolygonArea.hpp>
 #include <GeographicLib/Constants.hpp>
 using namespace GeographicLib;
 
 
-#include <boost/geometry.hpp>
-#include <boost/geometry/core/cs.hpp>
-#include <boost/geometry/geometries/point.hpp>
-#include <boost/geometry/geometries/box.hpp>
-#include <boost/geometry/geometries/ring.hpp>
-#include <boost/geometry/geometries/polygon.hpp>
-#include <boost/geometry/index/rtree.hpp>
-#include <boost/foreach.hpp>
+#include </usr/local/include/boost_1_64_0/boost/geometry.hpp>
+#include </usr/local/include/boost_1_64_0/boost/geometry/core/cs.hpp>
+#include </usr/local/include/boost_1_64_0/boost/geometry/geometries/point.hpp>
+#include </usr/local/include/boost_1_64_0/boost/geometry/geometries/box.hpp>
+#include </usr/local/include/boost_1_64_0/boost/geometry/geometries/ring.hpp>
+#include </usr/local/include/boost_1_64_0/boost/geometry/geometries/polygon.hpp>
+#include </usr/local/include/boost_1_64_0/boost/geometry/index/rtree.hpp>
+#include </usr/local/include/boost_1_64_0/boost/foreach.hpp>
 
 namespace bg = boost::geometry;
 namespace bgi = boost::geometry::index;
@@ -590,6 +591,38 @@ namespace tsunamisquares {
 					intersectIDs.insert(v.second);
 				return intersectIDs;
 			};
-
 	};
+
+    template <typename Point>
+    void print_boost_coords(Point const& p){
+		std::cout << std::fixed << "(" << bg::get<0>(p) << "," << bg::get<1>(p) << "); ";
+    }
+
+    template <typename Point>
+    class make_geo_poly
+    {
+    private :
+        PolygonArea& geo_poly;
+
+    public :
+        make_geo_poly(PolygonArea& passed_geo_poly)
+			: geo_poly(passed_geo_poly)
+		{}
+        inline void operator()(Point& p)
+        {
+            	geo_poly.AddPoint(bg::get<1>(p), bg::get<0>(p));
+        }
+    };
+
+    //void print_poly_vertices(const poly_spheq poly){
+    //	bg::for_each_point(poly, print_boost_coords<point_spheq>);
+    //	std::cout << std::endl;
+    //}
+
+
+
+
+
+
+
 }

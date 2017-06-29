@@ -166,8 +166,17 @@ namespace tsunamisquares {
             }
             void set_box(const double &dlon, const double &dlat) {
             	_box = box_spheq(point_spheq(_pos[0]-dlon/2, _pos[1]-dlat/2), point_spheq(_pos[0]+dlon/2, _pos[1]+dlat/2));
-            	// set area when we set box
-            	_data._area = bg::area(ring())*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
+            	// Set area when we set box
+            	//_data._area = bg::area(ring())*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
+            	Geodesic geod(EARTH_MEAN_RADIUS, 0);
+				PolygonArea geo_poly(geod);
+				geo_poly.AddPoint(_pos[1]-dlat/2, _pos[0]-dlon/2);
+				geo_poly.AddPoint(_pos[1]-dlat/2, _pos[0]+dlon/2);
+				geo_poly.AddPoint(_pos[1]+dlat/2, _pos[0]+dlon/2);
+				geo_poly.AddPoint(_pos[1]+dlat/2, _pos[0]-dlon/2);
+			    double perimeter, area;
+			    unsigned n = geo_poly.Compute(false, true, perimeter, area);
+            	_data._area = area;
             }
             box_spheq box(void) const {
             	return _box;
@@ -183,6 +192,18 @@ namespace tsunamisquares {
 				bg::assign_points(box_ring, boxverts);
             	return box_ring;
             }
+
+            poly_spheq polygon(void) const {
+            	poly_spheq box_poly;
+				point_spheq boxverts[5];
+				boxverts[0] =_box.min_corner();
+				boxverts[1] = point_spheq(_box.min_corner().get<0>(), _box.max_corner().get<1>());
+				boxverts[2] =_box.max_corner();
+				boxverts[3] = point_spheq(_box.max_corner().get<0>(), _box.min_corner().get<1>());
+				boxverts[4] =_box.min_corner();
+				bg::assign_points(box_poly, boxverts);
+				return box_poly;
+			}
             double area(void) const {
             	return _data._area;
 			}
