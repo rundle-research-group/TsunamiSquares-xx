@@ -121,15 +121,17 @@ int main (int argc, char **argv) {
     this_world.clear();
     std::cout << std::endl << "Reading..."   << bathy_file.c_str() << std::endl;
     this_world.read_bathymetry(bathy_file.c_str());
-    // Index the neighbors by left/right/top etc.
-    std::cout << "Indexing neighbors......" << std::endl;
-    this_world.indexNeighbors();
 
     // Flatten the bottom for simple simulation test cases, do not do this for tsunami simulations
 	if(flatten_bool){
 		std::cout << "Flattening the bottom..."<< std::endl;
 		this_world.flattenBottom(flat_depth);
 	}
+
+    // Index the neighbors by left/right/top etc.
+    std::cout << "Indexing neighbors......" << std::endl;
+    this_world.indexNeighbors();
+
 
     // Compute the time step given the diffusion constant D
     //double dt = (double) (int) this_world.square(0).Lx()*this_world.square(0).Ly()/(2*D); //seconds

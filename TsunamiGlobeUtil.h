@@ -37,15 +37,15 @@
 #include <GeographicLib/Constants.hpp>
 using namespace GeographicLib;
 
-
-#include </usr/local/include/boost_1_64_0/boost/geometry.hpp>
-#include </usr/local/include/boost_1_64_0/boost/geometry/core/cs.hpp>
-#include </usr/local/include/boost_1_64_0/boost/geometry/geometries/point.hpp>
-#include </usr/local/include/boost_1_64_0/boost/geometry/geometries/box.hpp>
-#include </usr/local/include/boost_1_64_0/boost/geometry/geometries/ring.hpp>
-#include </usr/local/include/boost_1_64_0/boost/geometry/geometries/polygon.hpp>
-#include </usr/local/include/boost_1_64_0/boost/geometry/index/rtree.hpp>
-#include </usr/local/include/boost_1_64_0/boost/foreach.hpp>
+///usr/local/include/boost_1_64_0/
+#include <boost/geometry.hpp>
+#include <boost/geometry/core/cs.hpp>
+#include <boost/geometry/geometries/point.hpp>
+#include <boost/geometry/geometries/box.hpp>
+#include <boost/geometry/geometries/ring.hpp>
+#include <boost/geometry/geometries/polygon.hpp>
+#include <boost/geometry/index/rtree.hpp>
+#include <boost/foreach.hpp>
 
 namespace bg = boost::geometry;
 namespace bgi = boost::geometry::index;
@@ -541,9 +541,9 @@ namespace tsunamisquares {
 
 
 
-    typedef bg::model::point<float, 2, bg::cs::spherical_equatorial<bg::degree> > point_spheq;
+    typedef bg::model::point<double, 2, bg::cs::spherical_equatorial<bg::degree> > point_spheq;
     typedef bg::model::box<point_spheq> box_spheq;
-    typedef std::pair<box_spheq, unsigned> value;
+    typedef std::pair<point_spheq, unsigned> value;
     typedef bg::model::ring<point_spheq> ring_spheq;
     typedef bg::model::polygon<point_spheq> poly_spheq;
 
@@ -557,9 +557,13 @@ namespace tsunamisquares {
 
 		public:
 
-    		void addBox(const box_spheq &box, const unsigned int &i){
+    		/*void addBox(const box_spheq &box, const unsigned int &i){
 				//insert box in rtree
 				_rtree.insert(std::make_pair(box, i));
+			};*/
+    		void addPoint(const Vec<2> &point, const unsigned int &i){
+				//insert box in rtree
+				_rtree.insert(std::make_pair(point_spheq(point[0], point[1]), i));
 			};
 
     		std::vector<unsigned int> getNearest(const Vec<2> &xy, const int &numNear) const {
@@ -592,6 +596,9 @@ namespace tsunamisquares {
 				return intersectIDs;
 			};
 	};
+
+
+    double box_overlap_area(const Vec<2>& bottom_left, const Vec<2>& top_right, const box_spheq& qbox, const Geodesic& geod);
 
     template <typename Point>
     void print_boost_coords(Point const& p){

@@ -183,25 +183,12 @@ namespace tsunamisquares {
             }
             ring_spheq ring(void) const {
             	ring_spheq box_ring;
-				point_spheq boxverts[5];
-				boxverts[0] =_box.min_corner();
-				boxverts[1] = point_spheq(_box.min_corner().get<0>(), _box.max_corner().get<1>());
-				boxverts[2] =_box.max_corner();
-				boxverts[3] = point_spheq(_box.max_corner().get<0>(), _box.min_corner().get<1>());
-				boxverts[4] =_box.min_corner();
-				bg::assign_points(box_ring, boxverts);
+            	bg::assign(box_ring, box());
             	return box_ring;
             }
-
             poly_spheq polygon(void) const {
             	poly_spheq box_poly;
-				point_spheq boxverts[5];
-				boxverts[0] =_box.min_corner();
-				boxverts[1] = point_spheq(_box.min_corner().get<0>(), _box.max_corner().get<1>());
-				boxverts[2] =_box.max_corner();
-				boxverts[3] = point_spheq(_box.max_corner().get<0>(), _box.min_corner().get<1>());
-				boxverts[4] =_box.min_corner();
-				bg::assign_points(box_poly, boxverts);
+				bg::assign(box_poly, box());
 				return box_poly;
 			}
             double area(void) const {

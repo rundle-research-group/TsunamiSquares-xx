@@ -242,3 +242,55 @@ void tsunamisquares::Conversion::dist_vincenty(double &distance, double &start_a
 
     end_azimuth = atan2(cosU1*sinLambda, -sinU1*cosU2+cosU1*sinU2*cosLambda);
 }
+
+double tsunamisquares::box_overlap_area(const Vec<2>& bottom_left, const Vec<2>& top_right, const box_spheq& qbox, const Geodesic& geod){
+	double minlon, maxlon;
+	Vec<2> box_mincorner = Vec<2>(bg::get<0>(qbox.min_corner()), bg::get<1>(qbox.min_corner()));
+	Vec<2> box_maxcorner = Vec<2>(bg::get<0>(qbox.max_corner()), bg::get<1>(qbox.max_corner()));
+	Vec<2> shifted_bleft=bottom_left, shifted_tright=top_right;
+	Vec<2> overlap_bleft, overlap_tright;
+
+	// First get everyone away from the int date line
+	minlon = fmin(box_mincorner[0], box_maxcorner[0]);
+	minlon = fmin(minlon, bottom_left[0]);
+	minlon = fmin(minlon, top_right[0]);
+
+	maxlon = fmax(box_mincorner[0], box_maxcorner[0]);
+	maxlon = fmax(maxlon, bottom_left[0]);
+	maxlon = fmax(maxlon, top_right[0]);
+
+	if(minlon<-90 && maxlon > 90){
+		double shift = minlon+180;
+		box_mincorner[0]  = fmod((box_mincorner[0] - shift), 180);
+		box_maxcorner[0]  = fmod((box_maxcorner[0] - shift), 180);
+		shifted_bleft[0]  = fmod((bottom_left[0]   - shift), 180);
+		shifted_tright[0] = fmod((top_right[0]     - shift), 180);
+	}
+
+	// Then do calc
+	//    x overlaps, if none then no overlap
+	overlap_bleft[0]  = fmax(box_mincorner[0], shifted_bleft[0]);
+	overlap_tright[0] = fmin(box_maxcorner[0], shifted_tright[0]);
+	if(overlap_bleft[0] > overlap_tright[0]){
+		return 0.0;
+	}else{
+		// y overlaps, if none then no overlap
+		overlap_bleft[1]  = fmax(box_mincorner[1], shifted_bleft[1]);
+		overlap_tright[1] = fmin(box_maxcorner[1], shifted_tright[1]);
+		if(overlap_bleft[1] > overlap_tright[1]){
+			return 0.0;
+		}else{ // There is overlap, time to calc the area
+			PolygonArea geo_poly(geod);
+			geo_poly.AddPoint(overlap_bleft[1], overlap_bleft[0]);
+			geo_poly.AddPoint(overlap_tright[1], overlap_bleft[0]);
+			geo_poly.AddPoint(overlap_tright[1], overlap_tright[0]);
+			geo_poly.AddPoint(overlap_bleft[1], overlap_tright[0]);
+			double perimeter, overlap_area;
+			unsigned n = geo_poly.Compute(true, true, perimeter, overlap_area);
+			return overlap_area;
+		}
+	}
+}
+
+
+

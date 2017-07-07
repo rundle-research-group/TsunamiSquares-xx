@@ -272,6 +272,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
     // Now go through each square and move the water, distribute to neighbors
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo, new_center;
+        Vec<2> new_bleft, new_tright;
         double local_azimuth, distance_traveled, av_velo_mag, lat2, lon2, a12;
         std::multimap<double, UIndex> distsNneighbors;
 		std::map<double, UIndex>::const_iterator dnit;
@@ -295,10 +296,10 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
         //If the square didn't move, or has run out of water, immediately distribute it's water back to itself
         //   (along with any contributions from other squares)
-        /*if(average_velo == Vec<2>(0.0, 0.0) || sit->second.height() == 0.0){
+        if(average_velo == Vec<2>(0.0, 0.0) || sit->second.height() == 0.0){
         	sit->second.set_updated_height(sit->second.updated_height() + sit->second.height());
         	sit->second.set_updated_momentum(sit->second.updated_momentum() + sit->second.momentum());
-        }else{*/
+        }else{
         	// Calculate azimuth for geodesic calculation
 			if(atan2(average_velo[1], average_velo[0]) >= -(M_PI/2)){
 				local_azimuth = 90-atan2(average_velo[1], average_velo[0])*(180/M_PI);
@@ -308,19 +309,21 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
 			//bottom left
 			geod.Direct(current_pos[1]-_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
-			new_bottom_left = point_spheq(lon2, lat2);
+			//new_bottom_left = point_spheq(lon2, lat2);
+			new_bleft = Vec<2>(lon2, lat2);
 
 			//top left
-			geod.Direct(current_pos[1]+_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
-			new_top_left = point_spheq(lon2, lat2);
+			//geod.Direct(current_pos[1]+_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+			//new_top_left = point_spheq(lon2, lat2);
 
 			//top right
 			geod.Direct(current_pos[1]+_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
-			new_top_right = point_spheq(lon2, lat2);
+			//new_top_right = point_spheq(lon2, lat2);
+			new_tright = Vec<2>(lon2, lat2);
 
 			//bottom right
-			geod.Direct(current_pos[1]-_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
-			new_bottom_right = point_spheq(lon2, lat2);
+			//geod.Direct(current_pos[1]-_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+			//new_bottom_right = point_spheq(lon2, lat2);
 
 			//center, for nearest neighbor retrieval
 			geod.Direct(current_pos[1], current_pos[0], local_azimuth, distance_traveled, lat2, lon2);
@@ -328,12 +331,6 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
 			// Do a quick grab of nearest squares to new location, then do the accurate intersection check later
 			distsNneighbors = getNearest_rtree(new_center, num_nearest);
-
-
-			// Make Ring from new vertices for accurate overlap calc later
-			point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
-			ring_spheq new_ring;
-			bg::assign_points(new_ring, ring_verts);
 
 
 			// Init these for renormalizing the fractions
@@ -344,6 +341,11 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			std::map<UIndex, double> x_fracmap, y_fracmap;
 
 
+			/*// Make Ring from new vertices for accurate overlap calc
+			point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
+			ring_spheq new_ring;
+			bg::assign_points(new_ring, ring_verts);*/
+
 			// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
 			bool is_any_overlap = false;
 			for (dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); ++dnit) {
@@ -351,7 +353,23 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				std::vector<poly_spheq> output;
 				double overlap_area=0.0;
 
-				bg::intersection(new_ring, neighbor_it->second.polygon(), output);
+
+				overlap_area = box_overlap_area(new_bleft, new_tright, neighbor_it->second.box(), geod);
+				this_fraction = overlap_area/sit->second.area();
+
+				if(this_fraction > 0){
+					is_any_overlap = true;
+					fraction_sum += this_fraction;
+					originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
+				}
+
+				if(sit->first != dnit->second && this_fraction>0.9){
+					std::cout << sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction << ";\t overlap=" << overlap_area << ";\t sq area=" << sit->second.area() <<std::endl;
+					std::cout << "\t square:   " << bg::dsv(sit->second.box()) << std::endl;
+					std::cout << "\t new_box:  " << new_bleft << new_tright << std::endl;
+					std::cout << "\t neighbor: " << bg::dsv(square(dnit->second).box()) << std::endl;
+				}
+				/*bg::intersection(new_ring, neighbor_it->second.box(), output);
 
 				if(output.size() != 0){
 					is_any_overlap = true;
@@ -368,25 +386,19 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 					    unsigned n = geo_poly.Compute(true, true, perimeter, overlap_area);
 
 						this_fraction = overlap_area/sit->second.area();
-						std::cout << sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction <<std::endl;
+						std::cout << sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction << "; overlap=" << overlap_area << "; sq area=" << sit->second.area() <<std::endl;
 						if(sit->first != dnit->second && this_fraction>0.9){
-							//	std::cout<<std::fixed<<"ID "<<sit->first<<": ("<<dnit->second<<", "<<this_fraction<<")"<<std::endl;
-							std::cout << sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction <<std::endl;
-							std::cout << "\t square:   "<< sit->second.xy()+Vec<2>(-_dlon/2, -_dlat/2)<<"; "<< sit->second.xy()+Vec<2>(-_dlon/2, _dlat/2)<<"; "<<
-									                       sit->second.xy()+Vec<2>(_dlon/2, _dlat/2)<<"; "<< sit->second.xy()+Vec<2>(_dlon/2, -_dlat/2) << std::endl;
-							std::cout << "\t overlap:  "; bg::for_each_point(p, print_boost_coords<point_spheq>);std::cout << std::endl;
-							std::cout << "\t neighbor: "<< square(dnit->second).xy()+Vec<2>(-_dlon/2, -_dlat/2)<<"; "<< square(dnit->second).xy()+Vec<2>(-_dlon/2, _dlat/2)<<"; "<<
-									                       square(dnit->second).xy()+Vec<2>(_dlon/2, _dlat/2)<<"; "<< square(dnit->second).xy()+Vec<2>(_dlon/2, -_dlat/2) << std::endl;
+							//std::cout << std::endl<<sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction << "; overlap=" << overlap_area << "; sq area=" << sit->second.area() <<std::endl;
+
+							std::cout << "\t square:   " << bg::dsv(sit->second.polygon()) << std::endl;
+							std::cout << "\t newring:  " << bg::dsv(new_ring) << std::endl;
+							std::cout << "\t overlap:  " << bg::dsv(p) << std::endl;
+							std::cout << "\t neighbor: " << bg::dsv(square(dnit->second).polygon()) << std::endl;
 						}
 					}
-
-					//if(this_fraction > 1.0){
-					//	std::cout<<std::fixed<<"ID "<<sit->first<<": ("<<dnit->second<<", "<<this_fraction<<")"<<std::endl;
-					//}
-
 					fraction_sum += this_fraction;
 					originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
-				}
+				}*/
 
 			}
 
@@ -425,7 +437,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				neighbor_it->second.set_updated_momentum(M+dM);
 
 			}
-        //}
+        }
     }
 
     // Loop again over squares to set new velocity and height from accumulated height and momentum
@@ -463,10 +475,10 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id) {
         new_accel = grav_accel + friction_accel;
 
         // Check for invalid directions of motion (eg at edges or near land)
-        //if(square_it->second.invalid_directions()[0] && new_accel[0]<0.0) new_accel[0] = 0.0;
-        //if(square_it->second.invalid_directions()[1] && new_accel[0]>0.0) new_accel[0] = 0.0;
-        //if(square_it->second.invalid_directions()[2] && new_accel[1]<0.0) new_accel[1] = 0.0;
-        //if(square_it->second.invalid_directions()[3] && new_accel[1]>0.0) new_accel[1] = 0.0;
+        if(square_it->second.invalid_directions()[0] && new_accel[0]<0.0) new_accel[0] = 0.0;
+        if(square_it->second.invalid_directions()[1] && new_accel[0]>0.0) new_accel[0] = 0.0;
+        if(square_it->second.invalid_directions()[2] && new_accel[1]<0.0) new_accel[1] = 0.0;
+        if(square_it->second.invalid_directions()[3] && new_accel[1]>0.0) new_accel[1] = 0.0;
 
         // Set the acceleration
         square_it->second.set_accel(new_accel);
@@ -1268,7 +1280,8 @@ int tsunamisquares::World::read_bathymetry(const std::string &file_name) {
         new_square.set_id(i);
         new_square.read_bathymetry(in_file);
         new_square.set_box(dlon, dlat);
-        _square_rtree.addBox(new_square.box(), i);
+        //_square_rtree.addBox(new_square.box(), new_square.id());
+        _square_rtree.addPoint(new_square.xy(), new_square.id());
         _squares.insert(std::make_pair(new_square.id(), new_square));
     }
 
