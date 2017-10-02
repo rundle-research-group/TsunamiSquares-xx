@@ -93,7 +93,7 @@ namespace tsunamisquares {
                 _data._lat = _data._lon = _data._alt = _data._area = std::numeric_limits<double>::quiet_NaN();
                 _pos = Vec<3>();
                 _data._velocity = _data._accel = _data._updated_momentum = Vec<2>(0.0,0.0);
-                _data._height = _data._updated_height = std::numeric_limits<double>::quiet_NaN();
+                _data._height = _data._updated_height = 0.0;//std::numeric_limits<double>::quiet_NaN();
                 _data._density = 1025.0; // sea water by default
                 _data._friction = 0.02;
                 
@@ -392,7 +392,7 @@ namespace tsunamisquares {
             LatLonDepth _base;
             double _min_lat, _max_lat, _min_lon, _max_lon, _dlat, _dlon;
             int _num_latitudes, _num_longitudes;
-            RTree_spheq _square_rtree;
+            RTree_spheq _square_rtree, _wet_rtree;
             // Diffusion constant
             static const double _D = 140616.45;//100000;
         
@@ -445,6 +445,7 @@ namespace tsunamisquares {
             void info(void) const;
             
             int read_bathymetry(const std::string &file_name);
+            void populate_wet_rtree(void);
             
             void get_bounds(LatLonDepth &minimum, LatLonDepth &maximum) const;
             void reset_base_coord(const LatLonDepth &new_base);
@@ -453,7 +454,7 @@ namespace tsunamisquares {
             SquareIDSet getVertexIDs(void) const;
 
 
-            std::multimap<double, UIndex> getNearest_rtree(const Vec<2> &location, const int &numNear) const;
+            std::multimap<double, UIndex> getNearest_rtree(const Vec<2> &location, const int &numNear, const bool wet_bool) const;
             SquareIDSet getRingIntersects_rtree(const ring_spheq &ring) const;
             SquareIDSet getBoxIntersects_rtree(const box_spheq &box) const;
             SquareIDSet getNeighborIDs(const UIndex &square_id) const;

@@ -113,6 +113,7 @@ int main (int argc, char **argv) {
     // Header for the simulation output
     const std::string   header = "# time \t lon \t\t lat \t\t water height \t altitude \n";
     
+
     // -------------------------------------------------------------------------------- //
     ///////                Simulation Initialization and Loading                   ///////
     // -------------------------------------------------------------------------------- //
@@ -133,6 +134,33 @@ int main (int argc, char **argv) {
     this_world.indexNeighbors();
 
 
+    // --------------------------------------------------------------------------------//
+    //            Sea Floor Deformation and Initial Conditions                         //
+    // --------------------------------------------------------------------------------//
+
+    // Put water into squares to bring water level up to sealevel.
+    std::cout << "Filling with water..." << std::endl;
+	this_world.fillToSeaLevel();
+
+    std::cout << "Deforming the bottom... " << std::endl;
+    if(bump_bool){
+    	//   == DEFORM A LAND BUMP =======
+    	std::cout << "\t Deforming central bump " << std::endl;
+    	this_world.bumpCenter(bump_height);
+    }else{
+    	//   == DEFORM FROM FILE ==
+    	std::cout << "\t Deforming from file" << std::endl;
+		this_world.deformFromFile(deformation_file);
+
+    }
+	//Populate wet rtree
+	//this_world.populate_wet_rtree();
+
+
+    // --------------------------------------------------------------------------------//
+    //                         Time and Diffusion Behavior                             //
+    // --------------------------------------------------------------------------------//
+
     // Compute the time step given the diffusion constant D
     //double dt = (double) (int) this_world.square(0).Lx()*this_world.square(0).Ly()/(2*D); //seconds
     // Use file-provided time step, Check time step for minimum against shallow water wave speed.
@@ -141,13 +169,15 @@ int main (int argc, char **argv) {
     double wave_speed = sqrt(abs(G*this_world.getMaxDepth()));
     double minDt = this_world.getMinSize() / wave_speed;
 
-    if(0){//dt_param < minDt){
+    if(dt_param < minDt){
     	dt = minDt;
     	std::cout << "Using minimum time step of " << dt <<" seconds..." << std::endl;
     }else{
     	dt = dt_param;
     	std::cout << "Using provided time step of " << dt <<" seconds..." << std::endl;
     }
+
+    //precompute diffusion fractions (for physical diffusion model, not currently functional or in use)
     if(diffuse_bool && sphere_diffuse_bool){
 		std::cout << "Precomputing diffusion behavior..." << std::endl;
 		this_world.computeDiffussionFracts(dt, D);
@@ -160,33 +190,11 @@ int main (int argc, char **argv) {
     std::cout << "Lons by Lats = (" << num_lons << ", " << num_lats << ")...";
     ids = this_world.getSquareIDs();
     double max_time = N_steps*dt;
-    
 
     // Write KML model
     //std::cout << "Writing KML..."   << kml_file.c_str() << "  ...";
     //this_world.write_file_kml(kml_file.c_str());
     
-    
-    // Put water into squares to bring water level up to sealevel.
-    std::cout << "Filling with water..." << std::endl;
-	this_world.fillToSeaLevel();
-
-    // --------------------------------------------------------------------------------//
-    //            Sea Floor Deformation and Initial Conditions                         //
-    // --------------------------------------------------------------------------------//
-    std::cout << "Deforming the bottom... " << std::endl;
-
-    if(bump_bool){
-    	//   == DEFORM A LAND BUMP =======
-    	std::cout << "\t Deforming central bump " << std::endl;
-    	this_world.bumpCenter(bump_height);
-    }else{
-    	//   == DEFORM FROM FILE ==
-    	std::cout << "\t Deforming from file" << std::endl;
-		this_world.deformFromFile(deformation_file);
-
-    }
-
 
     // --------------------------------------------------------------------------------//
     // --==                         File I/O Preparation                          --== //

@@ -33,10 +33,10 @@ VQ_DIR = "~/VirtQuake/"
 # --------------------------------------------------------------------------------
 def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP):
     # Get ranges
-    print "min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std()
+    print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
     lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
     lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
-    z_min,z_max = sim_data['z'].min(), sim_data['z'].max()#-sim_data['z'].std(), sim_data['z'].std()#-.1, .1#-2, 2#
+    z_min,z_max = -2, 2#sim_data['z'].min(), sim_data['z'].max()#-sim_data['z'].std(), sim_data['z'].std()#
     cmap = plt.get_cmap('Blues_r')
     norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
     interp = 'none'
@@ -77,7 +77,7 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP):
             this_step = split_data[index]
             time = this_step['time'][0]
             
-            print "step: "+str(index)+"  time: "+str(time)+" num_points: "+str(len(this_step))
+            print("step: "+str(index)+"  time: "+str(time)+" num_points: "+str(len(this_step)))
             assert len(this_step) > 0
 
             X = this_step['lon'].reshape(-1, Ncols)
@@ -103,17 +103,18 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP):
 # --------------------------------------------------------------------------------
 def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file):
     # Get ranges
+    print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
     lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
     lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
     mean_lat = 0.5*(lat_min + lat_max)
     mean_lon = 0.5*(lon_min + lon_max)
     lon_range = lon_max - lon_min
     lat_range = lat_max - lat_min
-    z_min,z_max = -sim_data['z'].std(),sim_data['z'].std()#sim_data['z'].min(),sim_data['z'].max()
+    z_min,z_max = -1, 1#ssssim_data['z'].min(),sim_data['z'].max()#-sim_data['z'].std(),sim_data['z'].std()#
     cmap = plt.get_cmap('Blues_r')
     norm = mcolor.Normalize(vmin=z_min, vmax=-z_min)
     interp = 'none'
-    landcolor = '#FFFFCC'
+    landcolor = 'black'#'#FFFFCC'
     framelabelfont = mfont.FontProperties(family='Arial', style='normal', variant='normal', size=14)
     
     # Split the data up into arrays for each time step
@@ -159,7 +160,7 @@ def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_fi
             this_step = split_data[index]
             time = this_step['time'][0]
                     
-            print "step: "+str(index)+"  time: "+str(time)+" num_points: "+str(len(this_step))
+            print("step: "+str(index)+"  time: "+str(time)+" num_points: "+str(len(this_step)))
             assert len(this_step) > 0
                 
             X = this_step['lon'].reshape(-1, Ncols)
@@ -338,7 +339,7 @@ def plot_eq_disps_horiz(disp_file, save_file):
     divider = make_axes_locatable(m.ax)
     cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
     plt.figtext(0.96, 0.7, r'East disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
-    cbz = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norme)
+    cbe = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norme)
     
     # Masked array via conditional, don't color the land unless it has water on it
     zero_below = int(len(LEVELSe)/2)-1
@@ -368,7 +369,7 @@ def plot_eq_disps_horiz(disp_file, save_file):
     divider = make_axes_locatable(m.ax)
     cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
     plt.figtext(0.96, 0.7, r'North disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
-    cbz = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=normn)
+    cbn = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=normn)
     
     # Masked array via conditional, don't color the land unless it has water on it
     zero_below = int(len(LEVELSn)/2)-1
@@ -505,7 +506,8 @@ if __name__ == "__main__":
         plot_eq_displacements("bathymetry/Channel_Islands_largest_subset_lld_dispField_event39951.txt",Levels, "outputs/disp_map.png")
     
     if MODE == "eq_field_plot_horiz":
-        plot_eq_disps_horiz("bathymetry/Tohoku_lld_dispField_realisticSlips.xyuen", "outputs/realisticSlips_disp_map")
+        EVID = 8
+        plot_eq_disps_horiz("fields/Tohoku_lld_dispField_event{}.xyuen".format(EVID), "fields/disp_map_event{}".format(EVID))
         
     if MODE == "plot_bathy":
         #Levels = [-3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
@@ -552,10 +554,10 @@ if __name__ == "__main__":
         SAVE_NAME = "bathymetry/Tohoku_lld.txt"
         MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
         EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
-        EVID      = 1196
+        EVID      = 8
         # ---- compute field and write it ------
 #        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, SAVE_NAME))
-        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF --horizontal --model_file {} --event_id {} --lld_file {} ".format(MODEL, EVID, SAVE_NAME))
+        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --model_file {} --event_file {} --uniform_slip 10 --lld_file {} ".format(MODEL, EVENTS, SAVE_NAME))
 
 
 
