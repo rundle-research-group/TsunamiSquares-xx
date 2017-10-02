@@ -136,7 +136,7 @@ void tsunamisquares::World::diffuseSquaresSpherical(void) {
     double                                   add_height;
     Vec<2>                                   add_momentum;
     
-	//  This model is based on the idea that all square will distribute their water to nearby squares each time step,
+	//  This model is based on the idea that all square will spread out their water to nearby squares each time step,
 	//  but it hasn't been shown to actually work for smoothing purposes.
 
     // Initialize updated_heights and momenta, will use this to store the net height and momentum changes
@@ -892,7 +892,7 @@ void tsunamisquares::World::flattenBottom(const double &depth) {
 //// ----------------------------------------------------------------------
 
 // Find maximum depth in simulation
-double tsunamisquares::World::getMaxDepth() const {
+void tsunamisquares::World::calcMaxDepth() const {
     std::map<UIndex, Square>::const_iterator sit;
     double maxDepth, thisDepth;
     maxDepth = DBL_MAX;
@@ -903,11 +903,11 @@ double tsunamisquares::World::getMaxDepth() const {
         	maxDepth = thisDepth;
         }
     }
-    return maxDepth;
+    _max_depth = maxDepth;
 }
 
 //Find minimum square side length in simulation
-double tsunamisquares::World::getMinSize() const {
+void tsunamisquares::World::calcMinSpacing() const {
 	std::map<UIndex, Square>::const_iterator sit;
 	double minSize, thisX, thisY;
 	minSize = DBL_MAX;
@@ -932,7 +932,7 @@ double tsunamisquares::World::getMinSize() const {
 		}
 	}
 	//bg::distance returns angular distance in radians
-	return minSize*EARTH_MEAN_RADIUS;
+	_min_spacing = minSize*EARTH_MEAN_RADIUS;
 }
 
 
@@ -1410,6 +1410,10 @@ int tsunamisquares::World::read_bathymetry(const std::string &file_name) {
     _min_lon = min_latlon.lon();
     _max_lat = max_latlon.lat();
     _max_lon = max_latlon.lon();
+
+    // Find max depth and min cell spacing
+    calcMinSpacing();
+    calcMaxDepth();
 
     return 0;
 }

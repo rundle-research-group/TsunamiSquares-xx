@@ -85,7 +85,7 @@ int main (int argc, char **argv) {
 	bool	accel_bool						= atof(param_values[5].c_str());
 	bool	diffuse_bool					= atof(param_values[6].c_str());
 	// Choose naive cartesian diffusion method or accurate spherical method.
-	bool	sphere_diffuse_bool				= atof(param_values[7].c_str());
+	int		ndiffusions						= atof(param_values[7].c_str());
     // Diffusion constant (fit to a reasonable looking sim)
     double 	D 								= atof(param_values[8].c_str()); //140616.45;
     // Time step in seconds
@@ -166,21 +166,15 @@ int main (int argc, char **argv) {
     // Use file-provided time step, Check time step for minimum against shallow water wave speed.
 	double dt;
 	double G = 9.80665;
-    double wave_speed = sqrt(abs(G*this_world.getMaxDepth()));
-    double minDt = this_world.getMinSize() / wave_speed;
+    double wave_speed = sqrt(abs(G*this_world.max_depth()));
+    double minDt = this_world.min_spacing() / wave_speed;
 
-    if(dt_param < minDt){
+    if(0){//dt_param < minDt){
     	dt = minDt;
     	std::cout << "Using minimum time step of " << dt <<" seconds..." << std::endl;
     }else{
     	dt = dt_param;
     	std::cout << "Using provided time step of " << dt <<" seconds..." << std::endl;
-    }
-
-    //precompute diffusion fractions (for physical diffusion model, not currently functional or in use)
-    if(diffuse_bool && sphere_diffuse_bool){
-		std::cout << "Precomputing diffusion behavior..." << std::endl;
-		this_world.computeDiffussionFracts(dt, D);
     }
 
     // Gather model information
@@ -230,12 +224,8 @@ int main (int argc, char **argv) {
 
         // Diffuse (smooth) the squares
         if(diffuse_bool) {
-        	if(sphere_diffuse_bool){
-        		this_world.diffuseSquaresSpherical();
-        	} else{
-        		//this_world.diffuseSquaresToNeighbors(dt, D);
-        		this_world.diffuseSquaresWard(2);
-        	}
+			//this_world.diffuseSquaresToNeighbors(dt, D);
+			this_world.diffuseSquaresWard(ndiffusions);
         }
 
         // Increment time
