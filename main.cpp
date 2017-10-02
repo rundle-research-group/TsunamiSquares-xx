@@ -233,7 +233,8 @@ int main (int argc, char **argv) {
         	if(sphere_diffuse_bool){
         		this_world.diffuseSquaresSpherical();
         	} else{
-        		this_world.diffuseSquaresToNeighbors(dt, D);
+        		//this_world.diffuseSquaresToNeighbors(dt, D);
+        		this_world.diffuseSquaresWard(2);
         	}
         }
 

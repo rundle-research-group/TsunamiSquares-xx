@@ -472,6 +472,7 @@ namespace tsunamisquares {
             void computeDiffussionFracts(const double dt, const double D);
             void diffuseSquaresSpherical(void);
             void diffuseSquaresToNeighbors(const double dt, const double D);
+            void diffuseSquaresWard(const int ndiffuses);
             Vec<2> getGradient(const UIndex &square_id) const;
             Vec<2> fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids);
             tsunamisquares::Vec<2> getGradient_planeFit(const UIndex &square_id);

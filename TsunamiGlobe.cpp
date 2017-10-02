@@ -262,6 +262,74 @@ void tsunamisquares::World::diffuseSquaresToNeighbors(const double dt, const dou
 		}
     }
 }
+// Based on Ward's pair-wise smoothing method.  Our model has non-uniform square sizes, so we have to keep track of volume in a way he doesn't.
+void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
+    std::map<UIndex, Square>::iterator  sit;
+    SquareIDSet                         neighborIDs;
+    std::map<UIndex, Square>::iterator  nit;
+    double                              volume_change, new_level, add_height, height_change;
+    double								fact, diff;
+    Vec<2>                              momentum_change;
+    Vec<2>								dmom;
+    SquareIDSet::iterator               id_it;
+
+    for(int k=0; k<ndiffuses; k++){
+		// Initialize updated_heights and momenta, will use this to store the net height and momentum changes
+		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+			sit->second.set_updated_height( sit->second.height() );
+			sit->second.set_updated_momentum( sit->second.momentum() );
+		}
+
+		//
+		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+			if (sit->second.height() > 0) {
+				// Compute the height-dependent factor for this square
+				fact = 0.15*std::min(0.02+0.125*(sit->second.height()/6000), 0.5);
+
+				// Go through neighbors to check amount to be exchanged
+				neighborIDs = sit->second.get_valid_nearest_neighbors();
+				for (id_it=neighborIDs.begin(); id_it!=neighborIDs.end(); ++id_it) {
+					nit = _squares.find(*id_it);
+					if(nit->second.height() > 0){
+
+						volume_change = fact*(squareLevel(nit->first) - squareLevel(sit->first))*sit->second.area();
+
+						// Make sure there's water enough to give (or take) as calculated.
+						//  Each trade will happen twice (one when sit is A, one when sit is B), and each square has 4 neighbors (8 total trades).
+						//  So let's only allow at most an eighth to be transfered at a time. (A quarter for each pair)
+						if(volume_change > 0){
+							if(volume_change/nit->second.area() > nit->second.height()/8) volume_change = nit->second.height()/8*nit->second.area();
+
+							momentum_change =  nit->second.momentum()*(volume_change/nit->second.volume());
+						}
+
+						if(volume_change <= 0){
+							if(-volume_change/sit->second.area() > sit->second.height()/8) volume_change = -sit->second.height()/8*sit->second.area();
+
+							momentum_change = sit->second.momentum()*(volume_change/sit->second.volume());
+						}
+
+						nit->second.set_updated_height(nit->second.updated_height() - volume_change/nit->second.area());
+						sit->second.set_updated_height(sit->second.updated_height() + volume_change/sit->second.area());
+
+						nit->second.set_updated_momentum(nit->second.updated_momentum() - momentum_change);
+						sit->second.set_updated_momentum(sit->second.updated_momentum() + momentum_change);
+					}
+				}
+			}
+		}
+
+		// Reset the heights and velocities based on the changes
+		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+			sit->second.set_height( sit->second.updated_height() );
+			if(sit->second.height()>0){
+				sit->second.set_velocity( sit->second.updated_momentum() / sit->second.mass());
+			}else{
+				sit->second.set_velocity(Vec<2>(0.0,0.0));
+			}
+		}
+	}
+}
 
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
