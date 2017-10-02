@@ -488,8 +488,8 @@ namespace tsunamisquares {
             UIndex whichSquare(const Vec<2> &location) const;
             void flattenBottom(const double &depth);
             void bumpCenter(const double bump_height);
-            void calcMaxDepth(void) const;
-            void calcMinSpacing(void) const;
+            void calcMaxDepth(void);
+            void calcMinSpacing(void);
             // ======= Square functions =========
             Vec<2> squareCenter(const UIndex &square_id) const;
             Vec<2> squareLatLon(const UIndex &square_id) const;

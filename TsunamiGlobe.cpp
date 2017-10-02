@@ -284,7 +284,7 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
 			if (sit->second.height() > 0) {
 				// Compute the height-dependent factor for this square
-				fact = 0.15*std::min(0.02+0.125*(sit->second.height()/6000), 0.5);
+				fact = 0.15*std::min(0.02+0.125*(sit->second.height()/abs(max_depth())), 0.5);
 
 				// Go through neighbors to check amount to be exchanged
 				neighborIDs = sit->second.get_valid_nearest_neighbors();
@@ -892,7 +892,7 @@ void tsunamisquares::World::flattenBottom(const double &depth) {
 //// ----------------------------------------------------------------------
 
 // Find maximum depth in simulation
-void tsunamisquares::World::calcMaxDepth() const {
+void tsunamisquares::World::calcMaxDepth() {
     std::map<UIndex, Square>::const_iterator sit;
     double maxDepth, thisDepth;
     maxDepth = DBL_MAX;
@@ -907,7 +907,7 @@ void tsunamisquares::World::calcMaxDepth() const {
 }
 
 //Find minimum square side length in simulation
-void tsunamisquares::World::calcMinSpacing() const {
+void tsunamisquares::World::calcMinSpacing() {
 	std::map<UIndex, Square>::const_iterator sit;
 	double minSize, thisX, thisY;
 	minSize = DBL_MAX;

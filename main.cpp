@@ -224,8 +224,8 @@ int main (int argc, char **argv) {
 
         // Diffuse (smooth) the squares
         if(diffuse_bool) {
-			//this_world.diffuseSquaresToNeighbors(dt, D);
-			this_world.diffuseSquaresWard(ndiffusions);
+			this_world.diffuseSquaresToNeighbors(dt, D);
+			//this_world.diffuseSquaresWard(ndiffusions);
         }
 
         // Increment time
