@@ -202,6 +202,7 @@ int main (int argc, char **argv) {
     // --------------------------------------------------------------------------------//
     // --========-           Begin the Simulation; Move the Squares          ----====- //
     // --------------------------------------------------------------------------------//
+    bool isHealthy;
     std::cout << "Moving squares....time_step=" <<dt << "...";
     while (time < max_time) {
         // If this is a writing step, print status
@@ -209,6 +210,9 @@ int main (int argc, char **argv) {
             std::cout << ".." << (100.0*current_step)/N_steps << "%..";
             std::cout << std::flush;
         }
+        // Check sim health, exit if there are NaNs floating around
+        isHealthy = this_world.checkSimHealth();
+        if(!isHealthy) break;
 
         // Write the current state to file
         if (current_step%save_step == 0) {
@@ -227,6 +231,8 @@ int main (int argc, char **argv) {
 			this_world.diffuseSquaresToNeighbors(dt, D);
 			//this_world.diffuseSquaresWard(ndiffusions);
         }
+
+
 
         // Increment time
         time += dt;

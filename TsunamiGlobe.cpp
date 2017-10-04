@@ -33,10 +33,13 @@
 void tsunamisquares::World::fillToSeaLevel(void) {
     std::map<UIndex, Square>::iterator     sit;
 
+    _tot_volume = 0;
+
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-        // Add water if the  altitude of the Square center is below sea level
+        // Add water if the  altitude of the Square center is below sea level, grow total water volume.
         if (sit->second.xyz()[2] < 0.0) {
             sit->second.set_height(fabs(sit->second.xyz()[2]));
+            _tot_volume += sit->second.height()*sit->second.area();
         } else {
             sit->second.set_height(0.0);
         }
@@ -46,7 +49,20 @@ void tsunamisquares::World::fillToSeaLevel(void) {
     }
 }
 
+bool tsunamisquares::World::checkSimHealth(void) {
+	bool isHealthy = true;
+    std::map<UIndex, Square>::iterator sit;
 
+	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+		if(isnan(sit->second.height()) || isnan(sit->second.velocity()[0]) ||
+		   isnan(sit->second.momentum()[0]) || isnan(sit->second.accel()[0]) || isnan(sit->second.xyz()[0]) ){
+			printSquare(sit->first);
+			isHealthy = false;
+			break;
+		}
+    }
+	return isHealthy;
+}
 // Precompute diffusion fractions for each square to its neighbors.
 void tsunamisquares::World::computeDiffussionFracts(const double dt, const double D){
 	std::map<UIndex, Square>::iterator sit;
@@ -252,15 +268,29 @@ void tsunamisquares::World::diffuseSquaresToNeighbors(const double dt, const dou
         }
     }
 
-    // Reset the heights and velocities based on the changes
-    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-        sit->second.set_height( sit->second.updated_height() );
-        if(sit->second.height()>0){
-        	sit->second.set_velocity( sit->second.updated_momentum() / sit->second.mass());
-        }else{
+    // Reset the heights and velocities based on the changes, also catch any heights being set to less than 0 and correct.
+	//  we accumulate all this water that never should've been diffused in the first place so everything can be renormalized to conserve mass.
+	//  TODO: This method of correcting for over-diffusing water doesn't strictly conserve momentum.
+	double negative_water;
+	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+		if( sit->second.updated_height()<0){
+			negative_water += sit->second.updated_height();
+			sit->second.set_updated_height(0.0);
+		}
+
+		sit->second.set_height( sit->second.updated_height() );
+
+		if(sit->second.height()>0){
+			sit->second.set_velocity( sit->second.updated_momentum() / sit->second.mass());
+		}else{
 			sit->second.set_velocity(Vec<2>(0.0,0.0));
 		}
-    }
+	}
+
+	// Scale all the water to conserve mass after we fixed negative volumes
+	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+		sit->second.set_height( sit->second.height()*total_volume()/(total_volume() - abs(negative_water)) );
+	}
 }
 // Based on Ward's pair-wise smoothing method.  Our model has non-uniform square sizes, so we have to keep track of volume in a way he doesn't.
 void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
@@ -284,7 +314,8 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
 			if (sit->second.height() > 0) {
 				// Compute the height-dependent factor for this square
-				fact = 0.15*std::min(0.02+0.125*(sit->second.height()/abs(max_depth())), 0.5);
+				fact = 0.15*std::min(0.02+0.125*(sit->second.height()/6000), 0.5);
+				// 													abs(max_depth())
 
 				// Go through neighbors to check amount to be exchanged
 				neighborIDs = sit->second.get_valid_nearest_neighbors();
@@ -298,13 +329,12 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 						//  Each trade will happen twice (one when sit is A, one when sit is B), and each square has 4 neighbors (8 total trades).
 						//  So let's only allow at most an eighth to be transfered at a time. (A quarter for each pair)
 						if(volume_change > 0){
-							if(volume_change/nit->second.area() > nit->second.height()/8) volume_change = nit->second.height()/8*nit->second.area();
+							if(volume_change/nit->second.area() > nit->second.height()) volume_change = nit->second.height()*nit->second.area();
 
 							momentum_change =  nit->second.momentum()*(volume_change/nit->second.volume());
 						}
-
 						if(volume_change <= 0){
-							if(-volume_change/sit->second.area() > sit->second.height()/8) volume_change = -sit->second.height()/8*sit->second.area();
+							if(-volume_change/sit->second.area() > sit->second.height()) volume_change = -sit->second.height()*sit->second.area();
 
 							momentum_change = sit->second.momentum()*(volume_change/sit->second.volume());
 						}
@@ -319,15 +349,30 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 			}
 		}
 
-		// Reset the heights and velocities based on the changes
+		// Reset the heights and velocities based on the changes, also catch any heights being set to less than 0 and correct.
+		//  we accumulate all this water that never should've been diffused in the first place so everything can be renormalized to conserve mass.
+		//  TODO: This method of correcting for over-diffusing water doesn't strictly conserve momentum.
+		double negative_water;
 		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+			if( sit->second.updated_height()<0){
+				negative_water += sit->second.updated_height();
+				sit->second.set_updated_height(0.0);
+			}
+
 			sit->second.set_height( sit->second.updated_height() );
+
 			if(sit->second.height()>0){
 				sit->second.set_velocity( sit->second.updated_momentum() / sit->second.mass());
 			}else{
 				sit->second.set_velocity(Vec<2>(0.0,0.0));
 			}
 		}
+
+		// Scale all the water to conserve mass after we fixed negative volumes
+		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+			sit->second.set_height( sit->second.height()*total_volume()/(total_volume() - abs(negative_water)) );
+		}
+
 	}
 }
 
@@ -336,14 +381,6 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const int num_nearest) {
     std::map<UIndex, Square>::iterator sit;
     Geodesic geod(EARTH_MEAN_RADIUS, 0);         /* <(^_^<) Happy Coder says: We're good up through this line!*/
-
-    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-		if(isnan(sit->second.height()))      std::cout << "ID " << sit->first << ": Height NaN"   << std::endl;
-		if(isnan(sit->second.velocity()[0])) std::cout << "ID " << sit->first << ": Velocity NaN" << std::endl;
-		if(isnan(sit->second.momentum()[0])) std::cout << "ID " << sit->first << ": Momentum NaN" << std::endl;
-		if(isnan(sit->second.accel()[0]))    std::cout << "ID " << sit->first << ": Accel NaN"    << std::endl;
-		if(isnan(sit->second.xyz()[0]))      std::cout << "ID " << sit->first << ": Position NaN" << std::endl;
-    }
 
     // Initialize the updated height and velocity to zero. These are the containers
     // used to keep track of the distributed height/velocity from moving squares.
@@ -522,17 +559,15 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
     // Loop again over squares to set new velocity and height from accumulated height and momentum
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-    	Vec<2> velo_to_set;
 
         sit->second.set_height(sit->second.updated_height());
 
         if(sit->second.mass() > 0.0){
-        	velo_to_set = sit->second.updated_momentum()/(sit->second.mass());
+        	sit->second.set_velocity( sit->second.updated_momentum()/(sit->second.mass()) );
         }else{
-        	velo_to_set = Vec<2>(0.0, 0.0);
-        }
 
-        sit->second.set_velocity(velo_to_set);
+            sit->second.set_velocity( Vec<2>(0.0, 0.0));
+        }
     }
     
 }
@@ -548,6 +583,16 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id) {
         gradient = getGradient_planeFit(square_id);
         
         grav_accel = gradient*G*(-1.0);
+
+        /*// limit to 0.5g, as per Ward
+        //  with this process, acceleration is maximized for a slope of 1.  Extreme slopes won't move super fast,
+        //  they'll tend to sit in one place while several smoothing iterations take their effect.
+        //  This currently produces pathological behavior.
+        double ang = -atan(gradient[0]);
+        grav_accel[0] = G*sin(ang)*cos(ang);
+
+        ang = -atan(gradient[1]);
+        grav_accel[1] = G*sin(ang)*cos(ang);*/
 
         // frictional acceleration from fluid particle interaction
         friction_accel = square_it->second.velocity()*(square_it->second.velocity().mag())*(square_it->second.friction())/(-1.0*(square_it->second.height()));
@@ -1250,18 +1295,15 @@ void tsunamisquares::World::printSquare(const UIndex square_id) {
     Square this_square = square(square_id);
 
     std::cout << "~~~ Square " << this_square.id() << "~~~" << std::endl;
-    std::cout << "center: " << squareCenter(square_id) << std::endl;
-    std::cout << "density: " << this_square.density() << std::endl;
-    std::cout << "area: " << this_square.area() << std::endl;
-    if (!isnan(this_square.height())) {
-        std::cout << "height: " << this_square.height() << std::endl;
-        std::cout << "level: " << squareLevel(square_id) << std::endl;
-        std::cout << "volume: " << this_square.volume() << std::endl;
-        std::cout << "mass: " << this_square.mass() << std::endl;
-        std::cout << "velocity: " << this_square.velocity() << std::endl; 
-        std::cout << "accel: " << this_square.accel() << std::endl;    
-        std::cout << "momentum: " << this_square.momentum() << std::endl; 
-    }
+    std::cout << "center:\t " << squareCenter(square_id) << std::endl;
+    std::cout << "area:\t " << this_square.area() << std::endl;
+	std::cout << "height:\t " << this_square.height() << std::endl;
+	std::cout << "level:\t " << squareLevel(square_id) << std::endl;
+	std::cout << "volume:\t " << this_square.volume() << std::endl;
+	std::cout << "mass:\t " << this_square.mass() << std::endl;
+	std::cout << "velocity:\t " << this_square.velocity() << std::endl;
+	std::cout << "accel:\t " << this_square.accel() << std::endl;
+	std::cout << "momentum:\t " << this_square.momentum() << std::endl;
 }
 
 void tsunamisquares::World::info(void) const{
