@@ -108,7 +108,7 @@ int main (int argc, char **argv) {
     // How high the central bump should be
 	double 	bump_height 					= atof(param_values[19].c_str());
 	double  num_nearest						= atof(param_values[20].c_str());
-
+	bool    doPlaneFit                      = atof(param_values[21].c_str());
 
     // Header for the simulation output
     const std::string   header = "# time \t lon \t\t lat \t\t water height \t altitude \n";
@@ -153,6 +153,8 @@ int main (int argc, char **argv) {
 		this_world.deformFromFile(deformation_file);
 
     }
+
+
 	//Populate wet rtree
 	//this_world.populate_wet_rtree();
 
@@ -223,7 +225,7 @@ int main (int argc, char **argv) {
 
         // Move the squares
         if(move_bool) {
-        	this_world.moveSquares(dt, accel_bool, num_nearest);
+        	this_world.moveSquares(dt, accel_bool, num_nearest, doPlaneFit);
         }
 
         // Diffuse (smooth) the squares

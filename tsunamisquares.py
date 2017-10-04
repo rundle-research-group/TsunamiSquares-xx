@@ -36,7 +36,7 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP):
     print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
     lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
     lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
-    z_min,z_max = -2,2#sim_data['z'].min(), sim_data['z'].max()#-sim_data['z'].std(), sim_data['z'].std()#
+    z_min,z_max = sim_data['z'].min(), sim_data['z'].max()#-sim_data['z'].std(), sim_data['z'].std()#
     cmap = plt.get_cmap('Blues_r')
     norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
     interp = 'none'

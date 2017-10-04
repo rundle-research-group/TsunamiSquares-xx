@@ -54,8 +54,13 @@ bool tsunamisquares::World::checkSimHealth(void) {
     std::map<UIndex, Square>::iterator sit;
 
 	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-		if(isnan(sit->second.height()) || isnan(sit->second.velocity()[0]) ||
-		   isnan(sit->second.momentum()[0]) || isnan(sit->second.accel()[0]) || isnan(sit->second.xyz()[0]) ){
+		if(isnan(sit->second.height())      || isinf(sit->second.height())      ||
+		   isnan(sit->second.velocity()[0]) || isinf(sit->second.velocity()[0]) ||
+		   isnan(sit->second.velocity()[1]) || isinf(sit->second.velocity()[1]) ||
+		   isnan(sit->second.momentum()[0]) || isinf(sit->second.momentum()[0]) ||
+		   isnan(sit->second.momentum()[1]) || isinf(sit->second.momentum()[1]) ||
+		   isnan(sit->second.accel()[0])    || isinf(sit->second.accel()[0])    ||
+		   isnan(sit->second.accel()[1])    || isinf(sit->second.accel()[1])    ){
 			printSquare(sit->first);
 			isHealthy = false;
 			break;
@@ -193,7 +198,7 @@ void tsunamisquares::World::diffuseSquaresSpherical(void) {
 }
 
 
-
+//TODO: Also smooth velocity (conserving momentum) after height smoothing
 // Diffusion: Remove a volume of water from each square and distribute it to the neighbors.
 // Model: area_change = diff_const*time_step
 void tsunamisquares::World::diffuseSquaresToNeighbors(const double dt, const double D) {
@@ -378,7 +383,7 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
-void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const int num_nearest) {
+void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const int num_nearest, const bool doPlaneFit) {
     std::map<UIndex, Square>::iterator sit;
     Geodesic geod(EARTH_MEAN_RADIUS, 0);         /* <(^_^<) Happy Coder says: We're good up through this line!*/
 
@@ -386,10 +391,9 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
     // used to keep track of the distributed height/velocity from moving squares.
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         sit->second.set_updated_height(0.0);
-        Vec<2> m; m[0] = m[1] = 0.0;
-        sit->second.set_updated_momentum(m);
+        sit->second.set_updated_momentum(Vec<2>(0.0,0.0));
         // Set acceleration based on the current slope of the water surface
-        updateAcceleration(sit->first);
+        updateAcceleration(sit->first, doPlaneFit);
     }
 
     // Now go through each square and move the water, distribute to neighbors
@@ -419,7 +423,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
         //If the square didn't move, or has run out of water, immediately distribute it's water back to itself
         //   (along with any contributions from other squares)
-        if(average_velo == Vec<2>(0.0, 0.0) || sit->second.height() == 0.0){
+        if(average_velo == Vec<2>(0.0, 0.0)){
         	sit->second.set_updated_height(sit->second.updated_height() + sit->second.height());
         	sit->second.set_updated_momentum(sit->second.updated_momentum() + sit->second.momentum());
         }else{
@@ -572,7 +576,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
     
 }
 
-void tsunamisquares::World::updateAcceleration(const UIndex &square_id) {
+void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bool doPlaneFit) {
     std::map<UIndex, Square>::iterator square_it = _squares.find(square_id);
     Vec<2> grav_accel, friction_accel, new_accel, gradient;
     double G = 9.80665; //mean gravitational acceleration at Earth's surface [NIST]
@@ -580,7 +584,7 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id) {
     // Only accelerate the water in this square IF there is water in this square
     if (square_it->second.height() > 0.0) {
         // gravitational acceleration due to the slope of the water surface
-        gradient = getGradient_planeFit(square_id);
+        gradient = getGradient(square_id, doPlaneFit);
         
         grav_accel = gradient*G*(-1.0);
 
@@ -719,8 +723,8 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
 
     		gradient[0] = gradient[0]/xvar;
     		gradient[1] = gradient[1]/yvar;
-    		if(isnan(gradient[0]))  gradient[0]=0.0;
-    		if(isnan(gradient[1]))  gradient[1]=0.0;
+    		if(isnan(gradient[0]) || isinf(gradient[0]))  gradient[0]=0.0;
+    		if(isnan(gradient[1]) || isinf(gradient[1]))  gradient[1]=0.0;
     	}
     }
 
@@ -771,103 +775,140 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
     */
 }
 
-tsunamisquares::Vec<2> tsunamisquares::World::getGradient_planeFit(const UIndex &square_id) {
+tsunamisquares::Vec<2> tsunamisquares::World::getGradient(const UIndex &square_id, const bool doPlaneFit) {
     std::map<UIndex, Square>::const_iterator square_it = _squares.find(square_id);
     Vec<2> gradient;
     bool debug = false;
     SquareIDSet square_ids_to_fit;
     
+
 	square_ids_to_fit = get_neighbors_for_accel(square_id);
-	// Handling of special cases for points all in a line (1, 2, or 3) handled in fitPointsToPlane
-	gradient = fitPointsToPlane(square_id, square_ids_to_fit);
+	// Handling of special cases for points all in a line (1, 2, or 3) handled in below functions
+    if(doPlaneFit){
+    	gradient = fitPointsToPlane(square_id, square_ids_to_fit);
+    } else {
+    	gradient = getAverageSlopeWard(square_id, square_ids_to_fit);
+    }
 
     return gradient;
 }
 
 
-tsunamisquares::Vec<2> tsunamisquares::World::getGradient(const UIndex &square_id) const {
+tsunamisquares::Vec<2> tsunamisquares::World::getAverageSlopeWard(const UIndex &square_id, const SquareIDSet &square_ids) const {
     std::map<UIndex, Square>::const_iterator square_it = _squares.find(square_id);
+    SquareIDSet::const_iterator     id_it;
     std::map<UIndex, Vec<2> > neighborsAndCoords;
     Vec<2> gradient;
     bool debug = false;
     
-    // Initialize the 4 points that will be used to approximate the slopes d/dx and d/dy
+	neighborsAndCoords = square_it->second.local_neighbor_coords();
+
+    int num_horiz  = 0;
+    int num_vert   = 0;
+    gradient[0]    = 0;
+    gradient[1]    = 0;
+    for (id_it=square_ids.begin(); id_it!=square_ids.end(); ++id_it) {
+
+		if(*id_it==square_it->second.left()){
+			gradient[0] += (squareLevel(square_it->first)-squareLevel(*id_it))/(-1*neighborsAndCoords[*id_it][0]);
+			num_horiz++;
+			continue;
+		}
+		if(*id_it==square_it->second.right()){
+			gradient[0] += (squareLevel(*id_it)-squareLevel(square_it->first))/neighborsAndCoords[*id_it][0];
+			num_horiz++;
+			continue;
+		}
+		if(*id_it==square_it->second.bottom()){
+			gradient[1] += (squareLevel(square_it->first)-squareLevel(*id_it))/(-1*neighborsAndCoords[*id_it][1]);
+			num_vert++;
+			continue;
+		}
+		if(*id_it==square_it->second.top()){
+			gradient[1] += (squareLevel(*id_it)-squareLevel(square_it->first))/neighborsAndCoords[*id_it][1];
+			num_vert++;
+			continue;
+		}
+    }
+
+	if(num_horiz == 0){
+		gradient[0] = 0.0;
+	} else{
+		gradient[0] = gradient[0]/num_horiz;
+	}
+	if(num_vert == 0){
+		gradient[1] = 0.0;
+	} else{
+		gradient[1] = gradient[1]/num_vert;
+	}
+
+	/*Kasey's old code.  Seems to be eqivalent, but I'm handling the different cases external to this function now
+	// Initialize the 4 points that will be used to approximate the slopes d/dx and d/dy
     // for this square. These are the centers of the neighbor squares.
-    Vec<2> center = squareCenter(square_id);   
-    
+    Vec<2> center = squareCenter(square_id);
+
     UIndex leftID   = square_it->second.left();
     UIndex rightID  = square_it->second.right();
     UIndex topID    = square_it->second.top();
     UIndex bottomID = square_it->second.bottom();
-    
-    // TODO: Better boundary conditions. For now, just set no acceleration along boundary.
-    // ALSO: Not accelerating squares whose neighbor is on a boundary.
-    if (square_it->second.xy()[1] == min_lat() || square_it->second.xy()[1] == max_lat() || square_it->second.xy()[0] == min_lon() || square_it->second.xy()[0] == max_lon() || leftID == INVALID_INDEX || rightID == INVALID_INDEX || topID == INVALID_INDEX || bottomID == INVALID_INDEX) {
-        gradient = Vec<2>(0.0,0.0);
-    } else {
-        // Altitude of water level of neighbor squares
-        double z_left   = squareLevel(leftID);
-        double z_right  = squareLevel(rightID);
-        double z_top    = squareLevel(topID);
-        double z_bottom = squareLevel(bottomID);
-        double z_mid    = squareLevel(square_id);
 
-        // Thickness of water in neighbor squares
-        double h_left   = _squares.find(leftID)->second.height();
-        double h_right  = _squares.find(rightID)->second.height();
-        double h_top    = _squares.find(topID  )->second.height();
-        double h_bottom = _squares.find(bottomID)->second.height();
-        double h_mid    = square_it->second.height();
-        
-        neighborsAndCoords = square_it->second.local_neighbor_coords();
+	// Altitude of water level of neighbor squares
+	double z_left   = squareLevel(leftID);
+	double z_right  = squareLevel(rightID);
+	double z_top    = squareLevel(topID);
+	double z_bottom = squareLevel(bottomID);
+	double z_mid    = squareLevel(square_id);
 
-        // X,Y of neighbor squares
-        Vec<2> center_L = neighborsAndCoords[leftID];
-        Vec<2> center_R = neighborsAndCoords[rightID];
-        Vec<2> center_T = neighborsAndCoords[topID];
-        Vec<2> center_B = neighborsAndCoords[bottomID];
-        
-        // ================================================================
-        // Gradient = (dz/dx, dz/dy)
-        // Handle the cases with dry cells on either left/right/top/bottom.
-        // IGNORE cells that are hi and dry
-        // ================================================================
-        if (h_left == 0.0 && h_right == 0.0 && h_top == 0.0 && h_bottom == 0.0) {
-        // Case: No water on any side
-            gradient[0] = 0.0;
-            gradient[1] = 0.0;
-        } else  {
-            if (h_left > 0.0 && h_right > 0.0 && h_top > 0.0 && h_bottom > 0.0) {
-            // Case: No dry neighbors, then do normal gradient
-                gradient[0] = (z_right-z_left)/( center_L.dist(center_R) );
-                gradient[1] = (z_top-z_bottom)/( center_T.dist(center_B) );
-            }
-            
-            // Case: Hi and dry on the right, water to the left
-            if (h_right == 0.0 && z_right >= 0.0 && h_left != 0.0) {
-                gradient[0] = (z_mid-z_left)/( center_L.dist(center) );
-            } else if (h_left == 0.0 && z_left >= 0.0 && h_right != 0.0) {
-            // Case: Hi and dry on the left, water to the right
-                gradient[0] = (z_right-z_mid)/( center_R.dist(center) );
-            }
+	// Thickness of water in neighbor squares
+	double h_left   = _squares.find(leftID)->second.height();
+	double h_right  = _squares.find(rightID)->second.height();
+	double h_top    = _squares.find(topID  )->second.height();
+	double h_bottom = _squares.find(bottomID)->second.height();
+	double h_mid    = square_it->second.height();
 
-            
-            // Case: Hi and dry on the top, water on bottom
-            if (h_top == 0.0 && z_top >= 0.0 && h_bottom != 0.0) {
-                gradient[1] = (z_mid-z_bottom)/( center.dist(center_B) );
-            } else if (h_left == 0.0 && z_left >= 0.0 && h_right != 0.0) {
-            // Case: Hi and dry on the bottom, water on top
-                gradient[1] = (z_top-z_mid)/( center_T.dist(center) );
-            }
-            
-        }
-        
-        if (debug) {
-            std::cout << "square  " << square_id << std::endl;
-            std::cout << "d/dx " << gradient[0] << std::endl; 
-            std::cout << "d/dy " << gradient[1] << std::endl;
-        }
-    }
+	neighborsAndCoords = square_it->second.local_neighbor_coords();
+
+	// X,Y of neighbor squares
+	Vec<2> center_L = neighborsAndCoords[leftID];
+	Vec<2> center_R = neighborsAndCoords[rightID];
+	Vec<2> center_T = neighborsAndCoords[topID];
+	Vec<2> center_B = neighborsAndCoords[bottomID];
+
+	// ================================================================
+	// Gradient = (dz/dx, dz/dy)
+	// Handle the cases with dry cells on either left/right/top/bottom.
+	// IGNORE cells that are hi and dry
+	// ================================================================
+	if (h_left == 0.0 && h_right == 0.0 && h_top == 0.0 && h_bottom == 0.0) {
+	// Case: No water on any side
+		gradient[0] = 0.0;
+		gradient[1] = 0.0;
+	} else  {
+		if (h_left > 0.0 && h_right > 0.0 && h_top > 0.0 && h_bottom > 0.0) {
+		// Case: No dry neighbors, then do normal gradient
+			gradient[0] = (z_right-z_left)/( center_L.dist(center_R) );
+			gradient[1] = (z_top-z_bottom)/( center_T.dist(center_B) );
+		}
+
+		// Case: Hi and dry on the right, water to the left
+		if (h_right == 0.0 && z_right >= 0.0 && h_left != 0.0) {
+			gradient[0] = (z_mid-z_left)/( center_L.dist(center) );
+		} else if (h_left == 0.0 && z_left >= 0.0 && h_right != 0.0) {
+		// Case: Hi and dry on the left, water to the right
+			gradient[0] = (z_right-z_mid)/( center_R.dist(center) );
+		}
+
+
+		// Case: Hi and dry on the top, water on bottom
+		if (h_top == 0.0 && z_top >= 0.0 && h_bottom != 0.0) {
+			gradient[1] = (z_mid-z_bottom)/( center.dist(center_B) );
+		} else if (h_left == 0.0 && z_left >= 0.0 && h_right != 0.0) {
+		// Case: Hi and dry on the bottom, water on top
+			gradient[1] = (z_top-z_mid)/( center_T.dist(center) );
+		}
+
+	}*/
+
     
     return gradient;
     
@@ -1294,7 +1335,7 @@ size_t tsunamisquares::World::num_squares(void) const {
 void tsunamisquares::World::printSquare(const UIndex square_id) {
     Square this_square = square(square_id);
 
-    std::cout << "~~~ Square " << this_square.id() << "~~~" << std::endl;
+    std::cout << "\n~~~ Square " << this_square.id() << "~~~" << std::endl;
     std::cout << "center:\t " << squareCenter(square_id) << std::endl;
     std::cout << "area:\t " << this_square.area() << std::endl;
 	std::cout << "height:\t " << this_square.height() << std::endl;
