@@ -391,7 +391,7 @@ namespace tsunamisquares {
             std::map<UIndex, Square>  _squares;
             LatLonDepth _base;
             double _min_lat, _max_lat, _min_lon, _max_lon, _dlat, _dlon;
-            double _max_depth, _min_spacing, _tot_volume;
+            double _max_depth, _min_spacing, _tot_volume, _max_overlap_error;
             int _num_latitudes, _num_longitudes;
             RTree_spheq _square_rtree, _wet_rtree;
             // Diffusion constant
@@ -449,6 +449,9 @@ namespace tsunamisquares {
             double total_volume(void) const {
 				return _tot_volume;
 			}
+            double max_overlap_error(void) const {
+				return _max_overlap_error;
+			}
             
             void printSquare(const UIndex square_id);
             void printVertex(const UIndex vertex_id);
@@ -473,7 +476,7 @@ namespace tsunamisquares {
             
 
             // ======= Main functions =========
-            void indexNeighbors(void);
+            void indexNeighbors(const int num_nearest);
             void computeNeighbors(void);
             void computeNeighborCoords(void);
             void computeInvalidDirections(void);
@@ -493,6 +496,7 @@ namespace tsunamisquares {
             void bumpCenter(const double bump_height);
             void calcMaxDepth(void);
             void calcMinSpacing(void);
+            void calcMaxOverlapError(const int num_nearest);
             bool checkSimHealth(void);
             // ======= Square functions =========
             Vec<2> squareCenter(const UIndex &square_id) const;

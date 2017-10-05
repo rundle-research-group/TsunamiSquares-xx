@@ -31,12 +31,15 @@ If a square sits on a beach at 5m above sea level and has 4m of water on it, the
 VQ_DIR = "~/VirtQuake/"
 
 # --------------------------------------------------------------------------------
-def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP):
+def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = None):
     # Get ranges
     print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
     lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
     lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
-    z_min,z_max = sim_data['z'].min(), sim_data['z'].max()#-sim_data['z'].std(), sim_data['z'].std()#
+    if(zminmax == None):
+        z_min,z_max = sim_data['z'].min(),sim_data['z'].max()
+    else:
+        z_min,z_max = zminmax
     cmap = plt.get_cmap('Blues_r')
     norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
     interp = 'none'
@@ -101,7 +104,7 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP):
 
 
 # --------------------------------------------------------------------------------
-def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file):
+def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax = None):
     # Get ranges
     print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
     lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
@@ -110,9 +113,12 @@ def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_fi
     mean_lon = 0.5*(lon_min + lon_max)
     lon_range = lon_max - lon_min
     lat_range = lat_max - lat_min
-    z_min,z_max = -1, 1#ssssim_data['z'].min(),sim_data['z'].max()#-sim_data['z'].std(),sim_data['z'].std()#
+    if(zminmax == None):
+        z_min,z_max = sim_data['z'].min(),sim_data['z'].max()
+    else:
+        z_min,z_max = zminmax
     cmap = plt.get_cmap('Blues_r')
-    norm = mcolor.Normalize(vmin=z_min, vmax=-z_min)
+    norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
     interp = 'none'
     landcolor = 'black'#'#FFFFCC'
     framelabelfont = mfont.FontProperties(family='Arial', style='normal', variant='normal', size=14)
@@ -169,7 +175,7 @@ def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_fi
             ALT = this_step['alt'].reshape(-1, Ncols)
             
             # Masked array via conditional, don't color the land unless it has water on it
-            masked_data = np.ma.masked_where(np.logical_and(np.array(Z == 0.0),np.array(ALT >= 0.0)), Z)
+            masked_data = np.ma.masked_where(np.logical_and(np.array(Z == 0.0000),np.array(ALT >= 0.0)), Z)
             
             # Set masked pixels to the land color
             cmap.set_bad(landcolor, 1.0)  # set alpha=0.0 for transparent
@@ -496,10 +502,11 @@ if __name__ == "__main__":
         T_STEP = np.unique(sim_data['time'])[1] - np.unique(sim_data['time'])[0]
         assert T_STEP > 0
         N_STEP = float(T_MAX-T_MIN)/T_STEP
-        # Makes animation on a Basemap plot, currently misbehaving
-        make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file)
+        zminmax = (-1, 1)#None#
+        # Makes animation on a Basemap plot
+        make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax)
         # Makes animation without any background Basemap
-#        make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP)
+#        make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax)
 
     if MODE == "eq_field_plot":
         Levels = [-.3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]

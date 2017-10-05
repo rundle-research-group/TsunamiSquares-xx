@@ -423,10 +423,10 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
         //If the square didn't move, or has run out of water, immediately distribute it's water back to itself
         //   (along with any contributions from other squares)
-        if(average_velo == Vec<2>(0.0, 0.0)){
-        	sit->second.set_updated_height(sit->second.updated_height() + sit->second.height());
-        	sit->second.set_updated_momentum(sit->second.updated_momentum() + sit->second.momentum());
-        }else{
+//        if(average_velo == Vec<2>(0.0, 0.0)){
+//        	sit->second.set_updated_height(sit->second.updated_height() + sit->second.height());
+//        	sit->second.set_updated_momentum(sit->second.updated_momentum() + sit->second.momentum());
+//        }else{
         	// Calculate azimuth for geodesic calculation
 			if(atan2(average_velo[1], average_velo[0]) >= -(M_PI/2)){
 				local_azimuth = 90-atan2(average_velo[1], average_velo[0])*(180/M_PI);
@@ -481,7 +481,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				double overlap_area=0.0;
 
 				overlap_area = box_overlap_area(new_bleft, new_tright, neighbor_it->second.box(), geod);
-				this_fraction = overlap_area/sit->second.area();
+				this_fraction = overlap_area/sit->second.area() - max_overlap_error();
 
 				if(this_fraction > 0){
 					is_any_overlap = true;
@@ -489,7 +489,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 					originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
 				}
 
-				// (Alegedly) more accurate overlap calculation using the boost library; v1.64 gives incorrect overlaps
+				// (Allegedly) more accurate overlap calculation using the boost library; v1.64 gives incorrect overlaps
 				/*bg::intersection(new_ring, neighbor_it->second.box(), output);
 
 				if(output.size() != 0){
@@ -524,8 +524,6 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			}
 
 			// If no overlap, we'll just distribute water to nearest square
-			// TODO: We should implement a line (geodesicLine? bg::Linestring?) from origin to destination,
-			//       and accurately stop (reflect) the square when it hits invalid areas.
 			if(!is_any_overlap){
 				originalFractions.insert(std::make_pair(distsNneighbors.begin()->second, 1.0));
 				fraction_sum = 1.0;
@@ -558,7 +556,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				neighbor_it->second.set_updated_momentum(M+dM);
 
 			}
-        }
+//        }
     }
 
     // Loop again over squares to set new velocity and height from accumulated height and momentum
@@ -617,13 +615,31 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bo
 }
 
 
+tsunamisquares::Vec<2> tsunamisquares::World::getGradient(const UIndex &square_id, const bool doPlaneFit) {
+    std::map<UIndex, Square>::const_iterator square_it = _squares.find(square_id);
+    Vec<2> gradient;
+    bool debug = false;
+    SquareIDSet square_ids_to_fit;
+
+
+	square_ids_to_fit = get_neighbors_for_accel(square_id);
+	// Handling of special cases for points all in a line (1, 2, or 3) handled in below functions
+    if(doPlaneFit){
+    	gradient = fitPointsToPlane(square_id, square_ids_to_fit);
+    } else {
+    	gradient = getAverageSlopeWard(square_id, square_ids_to_fit);
+    }
+
+    return gradient;
+}
+
+
 tsunamisquares::SquareIDSet tsunamisquares::World::get_neighbors_for_accel(const UIndex &square_id) const {
-	double															  thisLevel;
 	Square															 thisSquare;
     SquareIDSet                 	      valid_squares, all_neighbors_and_self;
     SquareIDSet::const_iterator       	                                  id_it;
 
-    thisLevel = squareLevel(square_id);
+
     // Grab all valid neighbors
     all_neighbors_and_self = _squares.find(square_id)->second.get_neighbors_and_self();
 
@@ -635,12 +651,11 @@ tsunamisquares::SquareIDSet tsunamisquares::World::get_neighbors_for_accel(const
 
 
     for (id_it=all_neighbors_and_self.begin(); id_it!=all_neighbors_and_self.end(); ++id_it) {
-    	// For now we are including low dry cells in acceleration calc (ie a formerly wet cell that ran out of water termporarily)
 		// If dry and taller than this square, do not include.  If dry and lower, do include
 		//        e.g. Are they dry, what's their level, height, etc.
     	Square neighborSquare = _squares.find(*id_it)->second;
     	bool condition1 = neighborSquare.height() > 0;
-    	bool condition2 = ((neighborSquare.height() == 0) && (neighborSquare.xyz()[2] < thisLevel));
+    	bool condition2 = ((neighborSquare.height() == 0) && (neighborSquare.xyz()[2] < squareLevel(square_id)));
 		if(condition1 || condition2){
 			valid_squares.insert(*id_it);
 		}
@@ -648,6 +663,7 @@ tsunamisquares::SquareIDSet tsunamisquares::World::get_neighbors_for_accel(const
     
     return valid_squares;
 }
+
 
 tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids) {
     // --------------------------------------------------------------------
@@ -773,24 +789,6 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
         x[i] = sum/A[i+n*i];
     }
     */
-}
-
-tsunamisquares::Vec<2> tsunamisquares::World::getGradient(const UIndex &square_id, const bool doPlaneFit) {
-    std::map<UIndex, Square>::const_iterator square_it = _squares.find(square_id);
-    Vec<2> gradient;
-    bool debug = false;
-    SquareIDSet square_ids_to_fit;
-    
-
-	square_ids_to_fit = get_neighbors_for_accel(square_id);
-	// Handling of special cases for points all in a line (1, 2, or 3) handled in below functions
-    if(doPlaneFit){
-    	gradient = fitPointsToPlane(square_id, square_ids_to_fit);
-    } else {
-    	gradient = getAverageSlopeWard(square_id, square_ids_to_fit);
-    }
-
-    return gradient;
 }
 
 
@@ -1021,6 +1019,44 @@ void tsunamisquares::World::calcMinSpacing() {
 	_min_spacing = minSize*EARTH_MEAN_RADIUS;
 }
 
+void tsunamisquares::World::calcMaxOverlapError(const int num_nearest) {
+	std::map<UIndex, Square>::const_iterator sit;
+    Geodesic geod(EARTH_MEAN_RADIUS, 0);
+    double max_overlap_error = 0;
+
+    std::cout<<".. Calculating maximum error in overlaps: ";
+
+	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+		double lat2, lon2;
+        Vec<2> new_bleft, new_tright;
+        std::multimap<double, UIndex> distsNneighbors;
+		std::map<double, UIndex>::const_iterator dnit;
+
+		//bottom left
+		geod.Direct(sit->second.xy()[1]-_dlat/2, sit->second.xy()[0]-_dlon/2, 90.0, 0.0, lat2, lon2);
+		new_bleft = Vec<2>(lon2, lat2);
+		//top right
+		geod.Direct(sit->second.xy()[1]+_dlat/2, sit->second.xy()[0]+_dlon/2, 90.0, 0.0, lat2, lon2);
+		new_tright = Vec<2>(lon2, lat2);
+
+		distsNneighbors = getNearest_rtree(sit->second.xy(), num_nearest, false);
+
+		for (dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); ++dnit) {
+			std::map<UIndex, Square>::iterator neighbor_it = _squares.find(dnit->second);
+			std::vector<poly_spheq> output;
+			double overlap_area=0.0;
+
+			if(dnit->second != sit->first){
+			overlap_area = box_overlap_area(new_bleft, new_tright, neighbor_it->second.box(), geod);
+			max_overlap_error = std::max(max_overlap_error, overlap_area/sit->second.area());
+			}
+		}
+	}
+
+	std::cout << std::scientific << max_overlap_error<< std::fixed<< "....";
+	_max_overlap_error = max_overlap_error;
+
+}
 
 // Much faster n-nearest neighbor search using an RTree
 std::multimap<double, tsunamisquares::UIndex> tsunamisquares::World::getNearest_rtree(const Vec<2> &location, const int &numNear, const bool wet_bool)const {
@@ -1080,10 +1116,11 @@ tsunamisquares::UIndex tsunamisquares::World::whichSquare(const Vec<2> &location
 }
 
 
-void tsunamisquares::World::indexNeighbors(void) {
+void tsunamisquares::World::indexNeighbors(const int num_nearest) {
 	computeNeighbors();
 	computeNeighborCoords();
 	computeInvalidDirections();
+	calcMaxOverlapError(num_nearest);
 }
 
 void tsunamisquares::World::computeNeighbors(void) {

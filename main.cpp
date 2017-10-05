@@ -131,8 +131,7 @@ int main (int argc, char **argv) {
 
     // Index the neighbors by left/right/top etc.
     std::cout << "Indexing neighbors......" << std::endl;
-    this_world.indexNeighbors();
-
+    this_world.indexNeighbors(num_nearest);
 
     // --------------------------------------------------------------------------------//
     //            Sea Floor Deformation and Initial Conditions                         //
@@ -209,7 +208,7 @@ int main (int argc, char **argv) {
     while (time < max_time) {
         // If this is a writing step, print status
         if (current_step%update_step == 0) {
-            std::cout << ".." << (100.0*current_step)/N_steps << "%..";
+            std::cout << ".." << current_step << "/"<<N_steps << "..";
             std::cout << std::flush;
         }
         // Check sim health, exit if there are NaNs floating around
