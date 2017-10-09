@@ -389,13 +389,26 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
     // Initialize the updated height and velocity to zero. These are the containers
     // used to keep track of the distributed height/velocity from moving squares.
-    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-        sit->second.set_updated_height(0.0);
-        sit->second.set_updated_momentum(Vec<2>(0.0,0.0));
-        // Set acceleration based on the current slope of the water surface
-        updateAcceleration(sit->first, doPlaneFit);
+    #pragma omp parallel
+    {
+    	int thread_id = omp_get_thread_num();
+    	std::map<UIndex, Square>::iterator sit;
+		#pragma omp for
+			for (UIndex i = 0; i < _squares.size(); i++){
+				sit = _squares.find(i);
+				sit->second.set_updated_height(0.0);
+				sit->second.set_updated_momentum(Vec<2>(0.0,0.0));
+				// Set acceleration based on the current slope of the water surface
+				updateAcceleration(sit->first, doPlaneFit);
+		}
     }
 
+//	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+//		sit->second.set_updated_height(0.0);
+//		sit->second.set_updated_momentum(Vec<2>(0.0,0.0));
+//		// Set acceleration based on the current slope of the water surface
+//		updateAcceleration(sit->first, doPlaneFit);
+//	}
     // Now go through each square and move the water, distribute to neighbors
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo, new_center;

@@ -24,6 +24,8 @@
 #define assertThrow(COND, ERR_MSG) assert(COND);
 
 int main (int argc, char **argv) {
+
+	omp_set_num_threads(NUM_THREADS);
     // Initialize the world (where the squares live), squares and vertices
     tsunamisquares::World                       this_world;
     tsunamisquares::SquareIDSet::const_iterator it;

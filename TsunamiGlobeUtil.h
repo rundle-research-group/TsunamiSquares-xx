@@ -23,12 +23,14 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <sstream>
+#include <iterator>
 #include <vector>
 #include <set>
 #include <iostream>
 #include <stdexcept>
 #include <cassert>
 #include <limits>
+#include <omp.h>
 
 #define assertThrow(COND, ERR_MSG) assert(COND);
 
@@ -56,6 +58,8 @@ namespace bgi = boost::geometry::index;
 #define WGS_84_FLATTENING       1/298.257223563
 
 #define CROSS_TOLERANCE 0.000001
+
+#define NUM_THREADS 2
 
 
 
