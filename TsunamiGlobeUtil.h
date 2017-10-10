@@ -59,7 +59,7 @@ namespace bgi = boost::geometry::index;
 
 #define CROSS_TOLERANCE 0.000001
 
-#define NUM_THREADS 2
+#define NUM_THREADS 3
 
 
 

@@ -392,185 +392,203 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
     #pragma omp parallel
     {
     	int thread_id = omp_get_thread_num();
-    	std::map<UIndex, Square>::iterator sit;
-		#pragma omp for
-			for (UIndex i = 0; i < _squares.size(); i++){
-				sit = _squares.find(i);
-				sit->second.set_updated_height(0.0);
-				sit->second.set_updated_momentum(Vec<2>(0.0,0.0));
-				// Set acceleration based on the current slope of the water surface
-				updateAcceleration(sit->first, doPlaneFit);
+    	std::map<UIndex, Square>::iterator lsit;
+
+		std::map<UIndex, double> local_updated_heights;
+		std::map<UIndex, Vec<2> > local_updated_momenta;
+		for (UIndex i = 0; i < _squares.size(); i++){
+			local_updated_heights[i] = 0.0;
+			local_updated_momenta[i] = Vec<2>(0.0, 0.0);
 		}
-    }
 
-//	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-//		sit->second.set_updated_height(0.0);
-//		sit->second.set_updated_momentum(Vec<2>(0.0,0.0));
-//		// Set acceleration based on the current slope of the water surface
-//		updateAcceleration(sit->first, doPlaneFit);
-//	}
-    // Now go through each square and move the water, distribute to neighbors
-    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-        Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo, new_center;
-        Vec<2> new_bleft, new_tright;
-        double local_azimuth, distance_traveled, av_velo_mag, lat2, lon2, a12;
-        std::multimap<double, UIndex> distsNneighbors;
-		std::map<double, UIndex>::const_iterator dnit;
-        point_spheq new_bottom_left, new_bottom_right, new_top_left, new_top_right;
 
-        current_pos = squareCenter(sit->first);
-        current_velo = sit->second.velocity();
-        if(accel_bool){
-        	current_accel = sit->second.accel();
-        }else{
-        	current_accel = Vec<2>(0,0);
-        }
-        
+	#pragma omp for
+		for (UIndex i = 0; i < _squares.size(); i++){
+			lsit = _squares.find(i);
+			lsit->second.set_updated_height(0.0);
+			lsit->second.set_updated_momentum(Vec<2>(0.0,0.0));
+			// Set acceleration based on the current slope of the water surface
+			updateAcceleration(lsit->first, doPlaneFit);
 
-        // Move the square: calculate average velocity during motion, find azimuth of that vector, and move
-        //  each vertex of the square to it's new location on the sphere.  This forms a Ring, which intersects some number of
-        //  boxes in our rtree.
-        new_velo = current_velo + current_accel*dt;
-        average_velo = current_velo + current_accel*0.5*dt;
-        distance_traveled = average_velo.mag()*dt;
+			Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo, new_center;
+			Vec<2> new_bleft, new_tright;
+			double local_azimuth, distance_traveled, av_velo_mag, lat2, lon2, a12;
+			std::multimap<double, UIndex> distsNneighbors;
+			std::map<double, UIndex>::const_iterator dnit;
+			point_spheq new_bottom_left, new_bottom_right, new_top_left, new_top_right;
 
-        //If the square didn't move, or has run out of water, immediately distribute it's water back to itself
-        //   (along with any contributions from other squares)
-//        if(average_velo == Vec<2>(0.0, 0.0)){
-//        	sit->second.set_updated_height(sit->second.updated_height() + sit->second.height());
-//        	sit->second.set_updated_momentum(sit->second.updated_momentum() + sit->second.momentum());
-//        }else{
-        	// Calculate azimuth for geodesic calculation
-			if(atan2(average_velo[1], average_velo[0]) >= -(M_PI/2)){
-				local_azimuth = 90-atan2(average_velo[1], average_velo[0])*(180/M_PI);
+			current_pos = squareCenter(lsit->first);
+			current_velo = lsit->second.velocity();
+			if(accel_bool){
+				current_accel = lsit->second.accel();
 			}else{
-				local_azimuth = -270-atan2(average_velo[1], average_velo[0])*(180/M_PI);
+				current_accel = Vec<2>(0,0);
 			}
 
-			//bottom left
-			geod.Direct(current_pos[1]-_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
-			//new_bottom_left = point_spheq(lon2, lat2);
-			new_bleft = Vec<2>(lon2, lat2);
+			// Move the square: calculate average velocity during motion, find azimuth of that vector, and move
+			//  each vertex of the square to it's new location on the sphere.  This forms a Ring, which intersects some number of
+			//  boxes in our rtree.
+			new_velo = current_velo + current_accel*dt;
+			average_velo = current_velo + current_accel*0.5*dt;
+			distance_traveled = average_velo.mag()*dt;
 
-			//top left
-			//geod.Direct(current_pos[1]+_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
-			//new_top_left = point_spheq(lon2, lat2);
-
-			//top right
-			geod.Direct(current_pos[1]+_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
-			//new_top_right = point_spheq(lon2, lat2);
-			new_tright = Vec<2>(lon2, lat2);
-
-			//bottom right
-			//geod.Direct(current_pos[1]-_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
-			//new_bottom_right = point_spheq(lon2, lat2);
-
-			//center, for nearest neighbor retrieval
-			geod.Direct(current_pos[1], current_pos[0], local_azimuth, distance_traveled, lat2, lon2);
-			new_center = Vec<2>(lon2, lat2);
-
-			// Do a quick grab of nearest squares to new location, then do the accurate intersection check later
-			distsNneighbors = getNearest_rtree(new_center, num_nearest, false);
-
-
-			// Init these for renormalizing the fractions
-			double this_fraction;
-			double fraction_sum = 0.0;
-			std::map<UIndex, double> originalFractions, renormFractions;
-			std::map<UIndex, double>::iterator frac_it;
-			std::map<UIndex, double> x_fracmap, y_fracmap;
-
-
-			/*// Make Ring from new vertices for accurate overlap calc
-			point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
-			ring_spheq new_ring;
-			bg::assign_points(new_ring, ring_verts);*/
-
-			// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
-			bool is_any_overlap = false;
-			for (dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); ++dnit) {
-				std::map<UIndex, Square>::iterator neighbor_it = _squares.find(dnit->second);
-				std::vector<poly_spheq> output;
-				double overlap_area=0.0;
-
-				overlap_area = box_overlap_area(new_bleft, new_tright, neighbor_it->second.box(), geod);
-				this_fraction = overlap_area/sit->second.area() - max_overlap_error();
-
-				if(this_fraction > 0){
-					is_any_overlap = true;
-					fraction_sum += this_fraction;
-					originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
+			//If the square didn't move, or has run out of water, immediately distribute it's water back to itself
+			//  (along with any contributions from other squares)
+//	        if(average_velo == Vec<2>(0.0, 0.0)){
+//
+//	        	local_updated_heights[i] = local_updated_heights[i] + lsit->second.height();
+//				local_updated_momenta[i] = local_updated_momenta[i] + lsit->second.momentum();
+//	        	//TODO: erase after multiprocessing is functional
+//	        	//sit->second.set_updated_height(sit->second.updated_height() + sit->second.height());
+//	        	//sit->second.set_updated_momentum(sit->second.updated_momentum() + sit->second.momentum());
+//	        }else{
+				// Calculate azimuth for geodesic calculation
+				if(atan2(average_velo[1], average_velo[0]) >= -(M_PI/2)){
+					local_azimuth = 90-atan2(average_velo[1], average_velo[0])*(180/M_PI);
+				}else{
+					local_azimuth = -270-atan2(average_velo[1], average_velo[0])*(180/M_PI);
 				}
 
-				// (Allegedly) more accurate overlap calculation using the boost library; v1.64 gives incorrect overlaps
-				/*bg::intersection(new_ring, neighbor_it->second.box(), output);
+				//bottom left
+				geod.Direct(current_pos[1]-_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+				//new_bottom_left = point_spheq(lon2, lat2);
+				new_bleft = Vec<2>(lon2, lat2);
 
-				if(output.size() != 0){
-					is_any_overlap = true;
+				//top left
+				//geod.Direct(current_pos[1]+_dlat/2, current_pos[0]-_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+				//new_top_left = point_spheq(lon2, lat2);
 
-					BOOST_FOREACH(poly_spheq p, output)
-					{
-						bg::unique(p);
+				//top right
+				geod.Direct(current_pos[1]+_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+				//new_top_right = point_spheq(lon2, lat2);
+				new_tright = Vec<2>(lon2, lat2);
 
-						//overlap_area = bg::area(p)*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
+				//bottom right
+				//geod.Direct(current_pos[1]-_dlat/2, current_pos[0]+_dlon/2, local_azimuth, distance_traveled, lat2, lon2);
+				//new_bottom_right = point_spheq(lon2, lat2);
 
-					    PolygonArea geo_poly(geod);
-					    bg::for_each_point(p, make_geo_poly<point_spheq>(geo_poly));
-					    double perimeter;
-					    unsigned n = geo_poly.Compute(true, true, perimeter, overlap_area);
+				//center, for nearest neighbor retrieval
+				geod.Direct(current_pos[1], current_pos[0], local_azimuth, distance_traveled, lat2, lon2);
+				new_center = Vec<2>(lon2, lat2);
 
-						this_fraction = overlap_area/sit->second.area();
-						std::cout << sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction << "; overlap=" << overlap_area << "; sq area=" << sit->second.area() <<std::endl;
-						if(sit->first != dnit->second && this_fraction>0.9){
-							//std::cout << std::endl<<sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction << "; overlap=" << overlap_area << "; sq area=" << sit->second.area() <<std::endl;
+				// Do a quick grab of nearest squares to new location, then do the accurate intersection check later
+				distsNneighbors = getNearest_rtree(new_center, num_nearest, false);
 
-							std::cout << "\t square:   " << bg::dsv(sit->second.polygon()) << std::endl;
-							std::cout << "\t newring:  " << bg::dsv(new_ring) << std::endl;
-							std::cout << "\t overlap:  " << bg::dsv(p) << std::endl;
-							std::cout << "\t neighbor: " << bg::dsv(square(dnit->second).polygon()) << std::endl;
-						}
+
+				// Init these for renormalizing the fractions
+				double this_fraction;
+				double fraction_sum = 0.0;
+				std::map<UIndex, double> originalFractions, renormFractions;
+				std::map<UIndex, double>::iterator frac_it;
+				std::map<UIndex, double> x_fracmap, y_fracmap;
+
+
+				/*// Make Ring from new vertices for accurate overlap calc
+				point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
+				ring_spheq new_ring;
+				bg::assign_points(new_ring, ring_verts);*/
+
+				// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
+				bool is_any_overlap = false;
+				for (dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); ++dnit) {
+					std::map<UIndex, Square>::iterator neighbor_it = _squares.find(dnit->second);
+					std::vector<poly_spheq> output;
+					double overlap_area=0.0;
+
+					overlap_area = box_overlap_area(new_bleft, new_tright, neighbor_it->second.box(), geod);
+					this_fraction = overlap_area/lsit->second.area() - max_overlap_error();
+
+					if(this_fraction > 0){
+						is_any_overlap = true;
+						fraction_sum += this_fraction;
+						originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
 					}
-					fraction_sum += this_fraction;
-					originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
-				}*/
 
+					// (Allegedly) more accurate overlap calculation using the boost library; v1.64 gives incorrect overlaps
+					/*bg::intersection(new_ring, neighbor_it->second.box(), output);
+
+					if(output.size() != 0){
+						is_any_overlap = true;
+
+						BOOST_FOREACH(poly_spheq p, output)
+						{
+							bg::unique(p);
+
+							//overlap_area = bg::area(p)*EARTH_MEAN_RADIUS*EARTH_MEAN_RADIUS;
+
+							PolygonArea geo_poly(geod);
+							bg::for_each_point(p, make_geo_poly<point_spheq>(geo_poly));
+							double perimeter;
+							unsigned n = geo_poly.Compute(true, true, perimeter, overlap_area);
+
+							this_fraction = overlap_area/sit->second.area();
+							std::cout << sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction << "; overlap=" << overlap_area << "; sq area=" << sit->second.area() <<std::endl;
+							if(sit->first != dnit->second && this_fraction>0.9){
+								//std::cout << std::endl<<sit->first << "x" << dnit->second << "; frac=" << std::fixed << this_fraction << "; overlap=" << overlap_area << "; sq area=" << sit->second.area() <<std::endl;
+
+								std::cout << "\t square:   " << bg::dsv(sit->second.polygon()) << std::endl;
+								std::cout << "\t newring:  " << bg::dsv(new_ring) << std::endl;
+								std::cout << "\t overlap:  " << bg::dsv(p) << std::endl;
+								std::cout << "\t neighbor: " << bg::dsv(square(dnit->second).polygon()) << std::endl;
+							}
+						}
+						fraction_sum += this_fraction;
+						originalFractions.insert(std::make_pair(neighbor_it->first, this_fraction));
+					}*/
+
+				}
+
+				// If no overlap, we'll just distribute water to nearest square
+				if(!is_any_overlap){
+					originalFractions.insert(std::make_pair(distsNneighbors.begin()->second, 1.0));
+					fraction_sum = 1.0;
+				}
+
+				// Then normalize these fractions to enforce conservation.
+
+				for (frac_it=originalFractions.begin(); frac_it!=originalFractions.end(); ++frac_it) {
+					//assertThrow((frac_it->second)/fraction_sum <= 1, "Area fraction must be less than 1.");
+					renormFractions.insert(std::make_pair(frac_it->first, (frac_it->second)/fraction_sum));
+				}
+
+				// Compute height and momentum imparted to neighbors
+				for (frac_it=renormFractions.begin(); frac_it!=renormFractions.end(); ++frac_it) {
+					// This iterator will give us the neighbor square
+					std::map<UIndex, Square>::iterator neighbor_it = _squares.find(frac_it->first);
+					//// This iterates through the renormalized fractions
+					//frac_it = renormFractions.find(nit->second);
+					double areaFraction = frac_it->second;
+
+					// Update the amount of water in the neighboring square (conserve volume)
+					double dV = lsit->second.volume()*areaFraction;
+					double H = local_updated_heights[neighbor_it->first];//neighbor_it->second.updated_height();
+					double A_n = neighbor_it->second.area();
+
+					local_updated_heights[neighbor_it->first] = H + dV/A_n;
+					//neighbor_it->second.set_updated_height(H + dV/A_n);
+
+					// Conserve momentum, update the velocity accordingly (at the end)
+					Vec<2> dM = new_velo*lsit->second.mass()*areaFraction;
+					Vec<2> M  = local_updated_momenta[neighbor_it->first];//neighbor_it->second.updated_momentum();
+
+					local_updated_momenta[neighbor_it->first] = M + dM;
+					//neighbor_it->second.set_updated_momentum(M+dM);
+
+				} //end loop setting updated heights and momenta from this square
+	        //}//end else statement for moving squares or not
+		}//end omp for loop over squares
+
+
+	#pragma omp critical
+		{
+			// Here is where we combine all local updated heights and momenta into the global updated values
+		    for (lsit=_squares.begin(); lsit!=_squares.end(); ++lsit) {
+				lsit->second.set_updated_height(lsit->second.updated_height()+local_updated_heights[lsit->first]);
+				lsit->second.set_updated_momentum( lsit->second.updated_momentum() + local_updated_momenta[lsit->first]);
 			}
+		}
 
-			// If no overlap, we'll just distribute water to nearest square
-			if(!is_any_overlap){
-				originalFractions.insert(std::make_pair(distsNneighbors.begin()->second, 1.0));
-				fraction_sum = 1.0;
-			}
-
-			// Then normalize these fractions to enforce conservation.
-
-			for (frac_it=originalFractions.begin(); frac_it!=originalFractions.end(); ++frac_it) {
-				//assertThrow((frac_it->second)/fraction_sum <= 1, "Area fraction must be less than 1.");
-				renormFractions.insert(std::make_pair(frac_it->first, (frac_it->second)/fraction_sum));
-			}
-
-			// Compute height and momentum imparted to neighbors
-			for (frac_it=renormFractions.begin(); frac_it!=renormFractions.end(); ++frac_it) {
-				// This iterator will give us the neighbor square
-				std::map<UIndex, Square>::iterator neighbor_it = _squares.find(frac_it->first);
-				//// This iterates through the renormalized fractions
-				//frac_it = renormFractions.find(nit->second);
-				double areaFraction = frac_it->second;
-
-				// Update the amount of water in the neighboring square (conserve volume)
-				double dV = sit->second.volume()*areaFraction;
-				double H = neighbor_it->second.updated_height();
-				double A_n = neighbor_it->second.area();
-				neighbor_it->second.set_updated_height(H + dV/A_n);
-
-				// Conserve momentum, update the velocity accordingly (at the end)
-				Vec<2> dM = new_velo*sit->second.mass()*areaFraction;
-				Vec<2> M  = neighbor_it->second.updated_momentum();
-				neighbor_it->second.set_updated_momentum(M+dM);
-
-			}
-//        }
-    }
+	}//end parallel block
 
     // Loop again over squares to set new velocity and height from accumulated height and momentum
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
