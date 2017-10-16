@@ -95,7 +95,7 @@ namespace tsunamisquares {
                 _data._velocity = _data._accel = _data._updated_momentum = Vec<2>(0.0,0.0);
                 _data._height = _data._updated_height = 0.0;//std::numeric_limits<double>::quiet_NaN();
                 _data._density = 1025.0; // sea water by default
-                _data._friction = 0.02;
+                _data._friction = 0.00001;//0.02;
                 
                 _invalid_directions = std::vector<bool>(4, false);
 
@@ -159,7 +159,12 @@ namespace tsunamisquares {
                 _data._accel = new_accel;
             }
             double friction(void) const {
-                return _data._friction;
+            	if (_pos[2] <= 0 ){
+            		return 0.00001;
+            	} else {
+            		return 0.0001;
+            	}
+                //return _data._friction;
             }
             void set_friction(const double &new_friction) {
                 _data._friction = new_friction;

@@ -61,8 +61,7 @@ namespace bgi = boost::geometry::index;
 
 #define NUM_THREADS 3
 
-
-
+#define SMALL_HEIGHT 0
 
 namespace tsunamisquares {
     // Provides general setup information regarding the library.
