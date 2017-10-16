@@ -168,11 +168,11 @@ int main (int argc, char **argv) {
 	double dt;
 	double G = 9.80665;
     double wave_speed = sqrt(abs(G*this_world.max_depth()));
-    double minDt = this_world.min_spacing() / wave_speed;
+    double maxDt = this_world.min_spacing() / wave_speed;
 
-    if(0){//dt_param < minDt){
-    	dt = minDt;
-    	std::cout << "Using minimum time step of " << dt <<" seconds..." << std::endl;
+    if(dt_param > maxDt){
+    	dt = maxDt;
+    	std::cout << "Using maximum time step of " << dt <<" seconds..." << std::endl;
     }else{
     	dt = dt_param;
     	std::cout << "Using provided time step of " << dt <<" seconds..." << std::endl;
@@ -203,7 +203,7 @@ int main (int argc, char **argv) {
     // --------------------------------------------------------------------------------//
     // --========-           Begin the Simulation; Move the Squares          ----====- //
     // --------------------------------------------------------------------------------//
-    bool isHealthy;
+    bool isHealthy = true;
     std::cout << "Moving squares....time_step=" <<dt << "...";
     while (time < max_time) {
         // If this is a writing step, print status
@@ -211,9 +211,9 @@ int main (int argc, char **argv) {
             std::cout << ".." << current_step << "/"<<N_steps << "..";
             std::cout << std::flush;
         }
-        // Check sim health, exit if there are NaNs floating around
-        isHealthy = this_world.checkSimHealth();
-        if(!isHealthy) break;
+        // Check sim health, exit if there are NaNs or Infs floating around
+        //isHealthy = this_world.checkSimHealth();
+        //if(!isHealthy) break;
 
         // Write the current state to file
         if (current_step%save_step == 0) {

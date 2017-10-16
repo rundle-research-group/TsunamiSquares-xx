@@ -57,8 +57,7 @@ namespace bgi = boost::geometry::index;
 
 #define CROSS_TOLERANCE 0.000001
 
-
-
+#define SMALL_HEIGHT 0
 
 namespace tsunamisquares {
     // Provides general setup information regarding the library.

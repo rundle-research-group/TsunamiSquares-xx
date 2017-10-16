@@ -120,7 +120,7 @@ def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_fi
     cmap = plt.get_cmap('Blues_r')
     norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
     interp = 'none'
-    landcolor = 'black'#'#FFFFCC'
+    landcolor = 'orange'#'black'#'#FFFFCC'
     framelabelfont = mfont.FontProperties(family='Arial', style='normal', variant='normal', size=14)
     
     # Split the data up into arrays for each time step
@@ -502,11 +502,11 @@ if __name__ == "__main__":
         T_STEP = np.unique(sim_data['time'])[1] - np.unique(sim_data['time'])[0]
         assert T_STEP > 0
         N_STEP = float(T_MAX-T_MIN)/T_STEP
-        zminmax = (-1, 1)#None#
+        zminmax = None#(-5, 16)#
         # Makes animation on a Basemap plot
-        make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax)
+#        make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax)
         # Makes animation without any background Basemap
-#        make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax)
+        make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax)
 
     if MODE == "eq_field_plot":
         Levels = [-.3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
