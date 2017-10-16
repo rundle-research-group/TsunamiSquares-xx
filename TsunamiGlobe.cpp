@@ -391,15 +391,29 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
 void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const int num_nearest, const bool doPlaneFit) {
-    std::map<UIndex, Square>::iterator sit;
-    Geodesic geod(EARTH_MEAN_RADIUS, 0);         /* <(^_^<) Happy Coder says: We're good up through this line!*/
 
     // Initialize the updated height and velocity to zero. These are the containers
     // used to keep track of the distributed height/velocity from moving squares.
+    /* <(^_^<) Happy Coder says: We're good up through this line!*/
+
     #pragma omp parallel
     {
     	int thread_id = omp_get_thread_num();
+    	int num_threads = omp_get_num_threads();
     	std::map<UIndex, Square>::iterator lsit;
+        Geodesic geod(EARTH_MEAN_RADIUS, 0);
+		double ldt;
+		bool   laccel_bool;
+		int    lnum_nearest;
+		bool   ldoPlaneFit;
+
+	#pragma omp critical
+		{
+			ldt          = dt;
+			laccel_bool  = accel_bool;
+			lnum_nearest = num_nearest;
+			ldoPlaneFit  = doPlaneFit;
+		}
 
 		std::map<UIndex, double> local_updated_heights;
 		std::map<UIndex, Vec<2> > local_updated_momenta;
@@ -415,7 +429,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			lsit->second.set_updated_height(0.0);
 			lsit->second.set_updated_momentum(Vec<2>(0.0,0.0));
 			// Set acceleration based on the current slope of the water surface
-			updateAcceleration(lsit->first, doPlaneFit);
+			updateAcceleration(lsit->first, ldoPlaneFit);
 
 			Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo, new_center;
 			Vec<2> new_bleft, new_tright;
@@ -426,7 +440,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
 			current_pos = squareCenter(lsit->first);
 			current_velo = lsit->second.velocity();
-			if(accel_bool){
+			if(laccel_bool){
 				current_accel = lsit->second.accel();
 			}else{
 				current_accel = Vec<2>(0,0);
@@ -435,13 +449,13 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			// Move the square: calculate average velocity during motion, find azimuth of that vector, and move
 			//  each vertex of the square to it's new location on the sphere.  This forms a Ring, which intersects some number of
 			//  boxes in our rtree.
-			new_velo = current_velo + current_accel*dt;
-			average_velo = current_velo + current_accel*0.5*dt;
-			distance_traveled = average_velo.mag()*dt;
+			new_velo = current_velo + current_accel*ldt;
+			average_velo = current_velo + current_accel*0.5*ldt;
+			distance_traveled = average_velo.mag()*ldt;
 
 			//If the square didn't move, or has run out of water, immediately distribute it's water back to itself
 			//  (along with any contributions from other squares)
-//	        if(average_velo == Vec<2>(0.0, 0.0)){
+//	        if(average_velo == Vec<2>(0.0, 0.0) || lsit->second.height() <= SMALL_HEIGHT){
 //
 //	        	local_updated_heights[i] = local_updated_heights[i] + lsit->second.height();
 //				local_updated_momenta[i] = local_updated_momenta[i] + lsit->second.momentum();
@@ -479,9 +493,11 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				//new_center = Vec<2>(lon2, lat2);
 
 				// Do a quick grab of nearest squares to new location, then do the accurate intersection check later
-				//distsNneighbors = getNearest_rtree(new_center, num_nearest, false);
-				SquareIDSet neighbor_ids = sit->second.get_valid_neighbors();
-				distsNneighbors.insert(std::make_pair(0.0, sit->first));
+				// TODO: if this is added in again, need to make sure that there aren't parallelization problems with
+				//       accessing the rtree from different threads at once
+				//distsNneighbors = getNearest_rtree(new_center, lnum_nearest, false);
+				SquareIDSet neighbor_ids = lsit->second.get_valid_neighbors();
+				distsNneighbors.insert(std::make_pair(0.0, lsit->first));
 				for(SquareIDSet::iterator sidsit = neighbor_ids.begin(); sidsit != neighbor_ids.end(); sidsit++){
 					distsNneighbors.insert(std::make_pair(1.0, *sidsit));
 				}
@@ -603,6 +619,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 	}//end parallel block
 
     // Loop again over squares to set new velocity and height from accumulated height and momentum
+    std::map<UIndex, Square>::iterator sit;
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
 
         sit->second.set_height(sit->second.updated_height());

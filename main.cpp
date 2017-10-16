@@ -25,8 +25,7 @@
 
 int main (int argc, char **argv) {
 
-	omp_set_num_threads(NUM_THREADS);
-    // Initialize the world (where the squares live), squares and vertices
+	// Initialize the world (where the squares live), squares and vertices
     tsunamisquares::World                       this_world;
     tsunamisquares::SquareIDSet::const_iterator it;
     tsunamisquares::SquareIDSet                 ids;
@@ -111,6 +110,10 @@ int main (int argc, char **argv) {
 	double 	bump_height 					= atof(param_values[19].c_str());
 	double  num_nearest						= atof(param_values[20].c_str());
 	bool    doPlaneFit                      = atof(param_values[21].c_str());
+	int     num_threads                     = atof(param_values[22].c_str());
+
+
+	omp_set_num_threads(num_threads);
 
     // Header for the simulation output
     const std::string   header = "# time \t lon \t\t lat \t\t water height \t altitude \n";
@@ -119,7 +122,6 @@ int main (int argc, char **argv) {
     // -------------------------------------------------------------------------------- //
     ///////                Simulation Initialization and Loading                   ///////
     // -------------------------------------------------------------------------------- //
-    start = clock();
     // Read in the bathymetry data
     this_world.clear();
     std::cout << std::endl << "Reading..."   << bathy_file.c_str() << std::endl;
@@ -205,6 +207,7 @@ int main (int argc, char **argv) {
     // --------------------------------------------------------------------------------//
     // --========-           Begin the Simulation; Move the Squares          ----====- //
     // --------------------------------------------------------------------------------//
+    start = clock();
     bool isHealthy = true;
     std::cout << "Moving squares....time_step=" <<dt << "...";
     while (time < max_time) {

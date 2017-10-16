@@ -59,8 +59,6 @@ namespace bgi = boost::geometry::index;
 
 #define CROSS_TOLERANCE 0.000001
 
-#define NUM_THREADS 3
-
 #define SMALL_HEIGHT 0
 
 namespace tsunamisquares {
