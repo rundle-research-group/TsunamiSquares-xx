@@ -502,7 +502,7 @@ if __name__ == "__main__":
         T_STEP = np.unique(sim_data['time'])[1] - np.unique(sim_data['time'])[0]
         assert T_STEP > 0
         N_STEP = float(T_MAX-T_MIN)/T_STEP
-        zminmax = None#(-5, 16)#
+        zminmax = (-0.1, 0.1)#None#(-sim_data['z'].std(), sim_data['z'].std())#
         # Makes animation on a Basemap plot
 #        make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax)
         # Makes animation without any background Basemap
