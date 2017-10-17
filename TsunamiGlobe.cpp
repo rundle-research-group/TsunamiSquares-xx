@@ -213,7 +213,6 @@ void tsunamisquares::World::diffuseSquaresToNeighbors(const double dt, const dou
     double                              volume_change, new_level, add_height, height_change;
     Vec<2>                              momentum_change;
     SquareIDSet::iterator               id_it;
-    bool debug = false;
 
     // Initialize updated_heights and momenta, will use this to store the net height and momentum changes
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
@@ -221,8 +220,6 @@ void tsunamisquares::World::diffuseSquaresToNeighbors(const double dt, const dou
         sit->second.set_updated_momentum( sit->second.momentum() );
     }
 
-    // TODO: We're doing the smoothing water transfer based on the top of the water (level), make sure that there's actually enough water (height) to
-    //       do the calculated transfer.
     // Compute the height changes due to diffusion of water to neighbors
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         if (sit->second.height() > 0 && squareLevel(sit->first) != 0.0) {
@@ -232,15 +229,6 @@ void tsunamisquares::World::diffuseSquaresToNeighbors(const double dt, const dou
             height_change = new_level - squareLevel(sit->first);
             // Transfer the proportional amount of momentum
             momentum_change = (sit->second.momentum())*volume_change/(sit->second.volume());
-
-            if (debug) {
-                std::cout << "----> Diffusing Square " << sit->second.id() << std::endl;
-                std::cout << "volume change: " << volume_change << std::endl;
-                std::cout << "old level: " << squareLevel(sit->first) << std::endl;
-                std::cout << "new level: " << new_level << std::endl;
-                std::cout << "-> neighbors " << std::endl;
-            }
-
 
 
 			// Divide up the diffused volume equally amongst valid wet neighbors
@@ -493,8 +481,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				//new_center = Vec<2>(lon2, lat2);
 
 				// Do a quick grab of nearest squares to new location, then do the accurate intersection check later
-				// TODO: if this is added in again, need to make sure that there aren't parallelization problems with
-				//       accessing the rtree from different threads at once
+				// TODO: if this is added in again, put rtree access in an omp critical block
 				//distsNneighbors = getNearest_rtree(new_center, lnum_nearest, false);
 				SquareIDSet neighbor_ids = lsit->second.get_valid_neighbors();
 				distsNneighbors.insert(std::make_pair(0.0, lsit->first));
