@@ -1,5 +1,5 @@
 # TsunamiGlobe
-C++ library for modeling tsunamis from Virtual Quake simulated earthquakes using the Tsunami Squares method (Steven N. Ward).  Extended from c++ code written by Kasey W. Schultz and John Max Wilson with intent to model a spherical or ellipsoidal Earth and improve stability.  NOAA ETOPO1 combined bathymetry and topology data not included, can be downloaded from <https://www.ngdc.noaa.gov/mgg/global/>
+C++ library for modeling tsunamis from Virtual Quake simulated earthquakes using the Tsunami Squares method (Steven N. Ward).  Extended from c++ code written by Kasey W. Schultz and John Max Wilson (<https://github.com/johnmaxwilson/TsunamiSquares>) with intent to model a spherical or ellipsoidal Earth and improve stability.  NOAA ETOPO1 combined bathymetry and topology data not included, can be downloaded from <https://www.ngdc.noaa.gov/mgg/global/>
  
 
 To compile, use
