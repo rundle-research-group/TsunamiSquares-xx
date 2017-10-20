@@ -401,7 +401,9 @@ namespace tsunamisquares {
             RTree_spheq _square_rtree, _wet_rtree;
             // Diffusion constant
             static const double _D = 140616.45;//100000;
-        
+
+	double apply_diffusion(std::map<UIndex, Square>::iterator& sit);
+
         public:
             Square &new_square(void);
             
@@ -489,8 +491,9 @@ namespace tsunamisquares {
             void moveSquares(const double dt, const bool accel_bool, const int num_nearest, const bool doPlaneFit);
             void computeDiffussionFracts(const double dt, const double D);
             void diffuseSquaresSpherical(void);
-            void diffuseSquaresToNeighbors(const double dt, const double D);
+            void diffuseSquaresSchultz(const double dt, const double D);
             void diffuseSquaresWard(const int ndiffuses);
+            void applyDiffusion(void);
             Vec<2> getAverageSlopeWard(const UIndex &square_id, const SquareIDSet &square_ids) const;
             Vec<2> fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids);
             Vec<2> getGradient(const UIndex &square_id, const bool doPlanFit);

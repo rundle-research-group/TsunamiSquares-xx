@@ -206,7 +206,7 @@ void tsunamisquares::World::diffuseSquaresSpherical(void) {
 //TODO: Also smooth velocity (conserving momentum) after height smoothing
 // Diffusion: Remove a volume of water from each square and distribute it to the neighbors.
 // Model: area_change = diff_const*time_step
-void tsunamisquares::World::diffuseSquaresToNeighbors(const double dt, const double D) {
+void tsunamisquares::World::diffuseSquaresSchultz(const double dt, const double D) {
     std::map<UIndex, Square>::iterator  sit;
     SquareIDSet                         neighborIDs;
     std::map<UIndex, Square>::iterator  nit;
@@ -266,31 +266,10 @@ void tsunamisquares::World::diffuseSquaresToNeighbors(const double dt, const dou
         }
     }
 
-    // Reset the heights and velocities based on the changes, also catch any heights being set to less than 0 and correct.
-	//  we accumulate all this water that never should've been diffused in the first place so everything can be renormalized to conserve mass.
-	//  TODO: This method of correcting for over-diffusing water doesn't strictly conserve momentum.
-	double negative_water;
-	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-		if( sit->second.updated_height()<0){
-			negative_water += sit->second.updated_height();
-			sit->second.set_updated_height(0.0);
-		}
-
-		sit->second.set_height( sit->second.updated_height() );
-
-		if(sit->second.height()>SMALL_HEIGHT){
-			sit->second.set_velocity( sit->second.updated_momentum() / sit->second.mass());
-		}else{
-			sit->second.set_velocity(Vec<2>(0.0,0.0));
-			sit->second.set_height(0);
-		}
-	}
-
-	// Scale all the water to conserve mass after we fixed negative volumes
-	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-		sit->second.set_height( sit->second.height()*total_volume()/(total_volume() - abs(negative_water)) );
-	}
+    //Applies changes and repairs over-diffused squares
+    applyDiffusion();
 }
+
 // Based on Ward's pair-wise smoothing method.  Our model has non-uniform square sizes, so we have to keep track of volume in a way he doesn't.
 void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
     std::map<UIndex, Square>::iterator  sit;
@@ -299,7 +278,7 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
     double                              volume_change, new_level, add_height, height_change;
     double								fact, diff;
     Vec<2>                              momentum_change;
-    Vec<2>								dmom;
+    Vec<2>								dmom, dvel;
     SquareIDSet::iterator               id_it;
 
     for(int k=0; k<ndiffuses; k++){
@@ -309,70 +288,89 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 			sit->second.set_updated_momentum( sit->second.momentum() );
 		}
 
-		//
+
 		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-			if (sit->second.height() > 0) {
+			// Only diffuse if there's water present
+			if (sit->second.height() > SMALL_HEIGHT) {
 				// Compute the height-dependent factor for this square
-				fact = 0.15*std::min(0.02+0.125*(sit->second.height()/6000), 0.5);
-				// 													abs(max_depth())
+				fact = 0.15*fmin(0.02+0.125*(sit->second.height()/6000), 0.5);  //Ward: depth dependent smoothing might have to adjust
+																//max_depth()
+				//simulate multiple applications of smoothing sweeps, instead of actually looping multiple times
+				//fact = (1-pow(1-fact, ndiffuses));
 
 				// Go through neighbors to check amount to be exchanged
 				neighborIDs = sit->second.get_valid_nearest_neighbors();
 				for (id_it=neighborIDs.begin(); id_it!=neighborIDs.end(); ++id_it) {
 					nit = _squares.find(*id_it);
-					if(nit->second.height() > 0){
 
-						volume_change = fact*(squareLevel(nit->first) - squareLevel(sit->first))*sit->second.area();
+					if(nit->second.height() > SMALL_HEIGHT){
+						//if(fmin(sit->second.height(), nit->second.height()) >= 200){
+							//conserve momentum
+							dmom = (nit->second.momentum() - sit->second.momentum())*fact;
+							nit->second.set_updated_momentum(nit->second.updated_momentum() - dmom);
+							sit->second.set_updated_momentum(sit->second.updated_momentum() + dmom);
+						//}else{//TODO: smooth velocities without using momentum as a proxy for shallow water
+						//	//don't conserve momentum
+						//	dvel = (nit->second.velocity() - sit->second.velocity())*fact;
+						//	nit->second.set_updated_momentum(nit->second.velocity() - dvel);
+						//	sit->second.set_updated_momentum(sit->second.velocity() + dvel);
+						//}
 
+						height_change = fact*(squareLevel(nit->first) - squareLevel(sit->first));
 						// Make sure there's water enough to give (or take) as calculated.
-						//  Each trade will happen twice (one when sit is A, one when sit is B), and each square has 4 neighbors (8 total trades).
-						//  So let's only allow at most an eighth to be transfered at a time. (A quarter for each pair)
-						if(volume_change > 0){
-							if(volume_change/nit->second.area() > nit->second.height()) volume_change = nit->second.height()*nit->second.area();
-
-							momentum_change =  nit->second.momentum()*(volume_change/nit->second.volume());
+						if(height_change >= 0){
+							if(height_change < nit->second.height()){
+								volume_change = height_change * nit->second.area();
+							}else{
+								volume_change = nit->second.volume();
+							}
 						}
-						if(volume_change <= 0){
-							if(-volume_change/sit->second.area() > sit->second.height()) volume_change = -sit->second.height()*sit->second.area();
-
-							momentum_change = sit->second.momentum()*(volume_change/sit->second.volume());
+						if(height_change < 0){
+							if(-height_change < sit->second.height()){
+								volume_change = height_change*sit->second.area();
+							}else{
+								volume_change = -sit->second.volume();
+							}
 						}
 
 						nit->second.set_updated_height(nit->second.updated_height() - volume_change/nit->second.area());
 						sit->second.set_updated_height(sit->second.updated_height() + volume_change/sit->second.area());
-
-						nit->second.set_updated_momentum(nit->second.updated_momentum() - momentum_change);
-						sit->second.set_updated_momentum(sit->second.updated_momentum() + momentum_change);
-					}
-				}
-			}
+					}//end if neighbor has water
+				}//end loop over neighbors
+			}//end if this square has water
 		}
 
-		// Reset the heights and velocities based on the changes, also catch any heights being set to less than 0 and correct.
-		//  we accumulate all this water that never should've been diffused in the first place so everything can be renormalized to conserve mass.
-		//  TODO: This method of correcting for over-diffusing water doesn't strictly conserve momentum.
-		double negative_water;
-		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-			if( sit->second.updated_height()<0){
-				negative_water += sit->second.updated_height();
-				sit->second.set_updated_height(0.0);
-			}
+		//Applies changes and repairs over-diffused squares
+		applyDiffusion();
 
-			sit->second.set_height( sit->second.updated_height() );
+	}
+}
 
-			if(sit->second.height()>SMALL_HEIGHT){
-				sit->second.set_velocity( sit->second.updated_momentum() / sit->second.mass());
-			}else{
-				sit->second.set_velocity(Vec<2>(0.0,0.0));
-				sit->second.set_height(0);
-			}
+void tsunamisquares::World::applyDiffusion(void){
+	// Reset the heights and velocities based on the changes, also catch any heights being set to less than 0 and correct.
+	//  we accumulate all this water that never should've been diffused in the first place so everything can be renormalized to conserve mass.
+	//  TODO: This method of correcting for over-diffusing water doesn't strictly conserve momentum, and doesn't conserve volume locally (only globally)
+	double overdrawn_volume = 0.0;
+	std::map<UIndex, Square>::iterator  sit;
+	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+		if( sit->second.updated_height() < SMALL_HEIGHT){
+			overdrawn_volume += sit->second.updated_height()*sit->second.area();
+			sit->second.set_updated_height(0.0);
 		}
 
-		// Scale all the water to conserve mass after we fixed negative volumes
-		for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-			sit->second.set_height( sit->second.height()*total_volume()/(total_volume() - abs(negative_water)) );
-		}
+		sit->second.set_height( sit->second.updated_height() );
 
+		if(sit->second.height() > SMALL_HEIGHT){
+			sit->second.set_velocity( sit->second.updated_momentum() / sit->second.mass());
+		}else{
+			sit->second.set_velocity(Vec<2>(0.0,0.0));
+			sit->second.set_height(0.0);
+		}
+	}
+	overdrawn_volume = abs(overdrawn_volume);
+	// Scale all the water to conserve mass after we fixed negative volumes
+	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+		sit->second.set_height( sit->second.height()*total_volume()/(total_volume() - overdrawn_volume) );
 	}
 }
 
