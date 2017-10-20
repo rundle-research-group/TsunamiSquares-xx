@@ -29,6 +29,8 @@ move_bool						Whether to do the main square-moving simulation
 
 accel_bool						Whether to accellerate water each step
 
+ndiffusions						How many smoothing sweeps to perform each step
+
 diffuse_bool					Whether to diffuse (smooth) water each step
 
 D 								Diffusion constant
@@ -54,3 +56,9 @@ flat_depth 						Used when flattening the bathymetry to a constant depth for tes
 bump_bool						Whether to use bump instead deformation file, for testing purposes
 
 bump_height 					Used when testing, produces small initial seafloor displacement
+
+num_nearest						How many neighbors to include in some nearest-neighbor overlap calculations 
+
+doPlaneFit                      Whether to use the plane-fitting method for acceleration calculations
+
+num_threads						How many threads to use during multiprocessing blocks
