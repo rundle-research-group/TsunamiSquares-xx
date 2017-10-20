@@ -10,5 +10,5 @@ TsunamiGlobe
 *.grd
 *.kml
 *.pptx
-local/
+ETOPO1/
 *.pyc
