@@ -243,6 +243,10 @@ void tsunamisquares::Conversion::dist_vincenty(double &distance, double &start_a
     end_azimuth = atan2(cosU1*sinLambda, -sinU1*cosU2+cosU1*sinU2*cosLambda);
 }
 
+double tsunamisquares::boostDistance(const Vec<2>& vec1, const Vec<2>& vec2) {
+	return bg::distance(point_spheq(vec1[0], vec1[1]), point_spheq(vec2[0], vec2[1]))*EARTH_MEAN_RADIUS;
+}
+
 double tsunamisquares::box_overlap_area(const Vec<2>& bottom_left, const Vec<2>& top_right, const box_spheq& qbox, const Geodesic& geod){
 	double minlon, maxlon;
 	Vec<2> box_mincorner = Vec<2>(bg::get<0>(qbox.min_corner()), bg::get<1>(qbox.min_corner()));

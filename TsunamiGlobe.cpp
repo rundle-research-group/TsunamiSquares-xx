@@ -1013,7 +1013,6 @@ void tsunamisquares::World::bumpCenter(const double bump_height) {
 	double dx, dy;
 	get_bounds(min_bound, max_bound);
 
-	Conversion c(min_bound);
     min_xyz = Vec<3>(min_bound.lon(), min_bound.lat(), min_bound.altitude());
     max_xyz = Vec<3>(max_bound.lon(), max_bound.lat(), max_bound.altitude());
     dx = max_xyz[0]-min_xyz[0];
@@ -1051,6 +1050,29 @@ void tsunamisquares::World::flattenBottom(const double &depth) {
         sit->second.set_lld(new_lld);
     }
 }
+
+void tsunamisquares::World::gaussianPile(const double hgauss, const double std){
+    std::map<UIndex, Square>::iterator sit;
+    LatLonDepth min_bound, max_bound, centerLLD;
+	Vec<3> min_xyz, max_xyz;
+	double dx, dy;
+	get_bounds(min_bound, max_bound);
+
+	min_xyz = Vec<3>(min_bound.lon(), min_bound.lat(), min_bound.altitude());
+	max_xyz = Vec<3>(max_bound.lon(), max_bound.lat(), max_bound.altitude());
+	dx = max_xyz[0]-min_xyz[0];
+	dy = max_xyz[1]-min_xyz[1];
+
+	Vec<2> centerLoc = Vec<2>(min_xyz[0]+dx/2.0, min_xyz[1]+dy/2.0);
+
+    // Assign the depth for all vertices to be newDepth
+    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+        double disc = hgauss * exp(-pow((tsunamisquares::boostDistance(centerLoc, sit->second.xy())/std), 2));
+        sit->second.set_height(-sit->second.xyz()[2] + disc);
+    }
+}
+
+
 //
 //// ----------------------------------------------------------------------
 //// -------------------- Utility Functions -------------------------------

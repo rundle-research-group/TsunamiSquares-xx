@@ -502,6 +502,7 @@ namespace tsunamisquares {
             UIndex whichSquare(const Vec<2> &location) const;
             void flattenBottom(const double &depth);
             void bumpCenter(const double bump_height);
+            void gaussianPile(const double hgauss, const double std);
             void calcMaxDepth(void);
             void calcMinSpacing(void);
             void calcMaxOverlapError(const int num_nearest);

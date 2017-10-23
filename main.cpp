@@ -108,9 +108,12 @@ int main (int argc, char **argv) {
 	bool	bump_bool						= atof(param_values[18].c_str());
     // How high the central bump should be
 	double 	bump_height 					= atof(param_values[19].c_str());
-	double  num_nearest						= atof(param_values[20].c_str());
-	bool    doPlaneFit                      = atof(param_values[21].c_str());
-	int     num_threads                     = atof(param_values[22].c_str());
+	bool 	gauss_bool	 					= atof(param_values[20].c_str());
+	double  gauss_height 					= atof(param_values[21].c_str());
+	double 	gauss_std	 					= atof(param_values[22].c_str());
+	int		num_nearest						= atof(param_values[23].c_str());
+	bool    doPlaneFit                      = atof(param_values[24].c_str());
+	int     num_threads                     = atof(param_values[25].c_str());
 
 
 	omp_set_num_threads(num_threads);
@@ -122,7 +125,7 @@ int main (int argc, char **argv) {
     // -------------------------------------------------------------------------------- //
     ///////                Simulation Initialization and Loading                   ///////
     // -------------------------------------------------------------------------------- //
-    // Read in the bathymetry data
+    // Read in the bathymetry data TODO: remove max depth calc from bathy reading and move to after the bottom flattening step
     this_world.clear();
     std::cout << std::endl << "Reading..."   << bathy_file.c_str() << std::endl;
     this_world.read_bathymetry(bathy_file.c_str());
@@ -145,17 +148,25 @@ int main (int argc, char **argv) {
     std::cout << "Filling with water..." << std::endl;
 	this_world.fillToSeaLevel();
 
-    std::cout << "Deforming the bottom... " << std::endl;
-    if(bump_bool){
-    	//   == DEFORM A LAND BUMP =======
-    	std::cout << "\t Deforming central bump " << std::endl;
-    	this_world.bumpCenter(bump_height);
-    }else{
-    	//   == DEFORM FROM FILE ==
-    	std::cout << "\t Deforming from file" << std::endl;
-		this_world.deformFromFile(deformation_file);
+	//
+	if(gauss_bool){
+		std::cout << "Accumulating gaussian pile... " << std::endl;
+		this_world.gaussianPile(gauss_height, gauss_std);
+	}else{
+	    std::cout << "Deforming the bottom... " << std::endl;
+	    if(bump_bool){
+	    	//   == DEFORM A LAND BUMP =======
+	    	std::cout << "\t Deforming central bump " << std::endl;
+	    	this_world.bumpCenter(bump_height);
+	    }else{
+	    	//   == DEFORM FROM FILE ==
+	    	std::cout << "\t Deforming from file" << std::endl;
+			this_world.deformFromFile(deformation_file);
+	    }
+	}
 
-    }
+
+
 
 
 	//Populate wet rtree

@@ -598,6 +598,7 @@ namespace tsunamisquares {
 			};
 	};
 
+    double boostDistance(const Vec<2>& vec1, const Vec<2>& vec2);
 
     double box_overlap_area(const Vec<2>& bottom_left, const Vec<2>& top_right, const box_spheq& qbox, const Geodesic& geod);
 
