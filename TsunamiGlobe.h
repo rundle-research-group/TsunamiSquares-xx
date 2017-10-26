@@ -504,6 +504,7 @@ namespace tsunamisquares {
             void bumpCenter(const double bump_height);
             void gaussianPile(const double hgauss, const double std);
             void calcMaxDepth(void);
+            Vec<2> centralLoc(void);
             void calcMinSpacing(void);
             void calcMaxOverlapError(const int num_nearest);
             bool checkSimHealth(void);

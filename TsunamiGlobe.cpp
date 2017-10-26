@@ -465,14 +465,11 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
 			//If the square didn't move, or has run out of water, immediately distribute it's water back to itself
 			//  (along with any contributions from other squares)
-//	        if(average_velo == Vec<2>(0.0, 0.0) || lsit->second.height() <= SMALL_HEIGHT){
-//
-//	        	local_updated_heights[sit->first] = local_updated_heights[sit->first] + lsit->second.height();
-//				local_updated_momenta[sit->first] = local_updated_momenta[sit->first] + lsit->second.momentum();
-//	        	//TODO: erase after multiprocessing is functional
-//	        	//sit->second.set_updated_height(sit->second.updated_height() + sit->second.height());
-//	        	//sit->second.set_updated_momentum(sit->second.updated_momentum() + sit->second.momentum());
-//	        }else{
+	        if(average_velo == Vec<2>(0.0, 0.0) || lsit->second.height() <= SMALL_HEIGHT){
+
+	        	local_updated_heights[lsit->first] += lsit->second.height();
+				local_updated_momenta[lsit->first] += lsit->second.momentum();
+	        }else{
 				// Calculate azimuth for geodesic calculation
 				if(atan2(average_velo[1], average_velo[0]) >= -(M_PI/2)){
 					local_azimuth = 90-atan2(average_velo[1], average_velo[0])*(180/M_PI);
@@ -602,17 +599,15 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 					double A_n = neighbor_it->second.area();
 
 					local_updated_heights[neighbor_it->first] = H + dV/A_n;
-					//neighbor_it->second.set_updated_height(H + dV/A_n);
 
 					// Conserve momentum, update the velocity accordingly (at the end)
 					Vec<2> dM = new_velo*lsit->second.mass()*areaFraction;
-					Vec<2> M  = local_updated_momenta[neighbor_it->first];//neighbor_it->second.updated_momentum();
+					Vec<2> M  = local_updated_momenta[neighbor_it->first];
 
 					local_updated_momenta[neighbor_it->first] = M + dM;
-					//neighbor_it->second.set_updated_momentum(M+dM);
 
 				} //end loop setting updated heights and momenta from this square
-	        //}//end else statement for moving squares or not
+	        }//end else statement for moving squares or not
 		}//end omp for loop over squares
 
 
@@ -1006,9 +1001,8 @@ void tsunamisquares::World::deformBottom(const UIndex &square_id, const double &
     sit->second.set_lld(new_lld);
 }
 
-
-void tsunamisquares::World::bumpCenter(const double bump_height) {
-	LatLonDepth min_bound, max_bound, centerLLD;
+tsunamisquares::Vec<2> tsunamisquares::World::centralLoc(void){
+	LatLonDepth min_bound, max_bound;
 	Vec<3> min_xyz, max_xyz;
 	double dx, dy;
 	get_bounds(min_bound, max_bound);
@@ -1018,7 +1012,12 @@ void tsunamisquares::World::bumpCenter(const double bump_height) {
     dx = max_xyz[0]-min_xyz[0];
     dy = max_xyz[1]-min_xyz[1];
 
-	Vec<2> centerLoc = Vec<2>(min_xyz[0]+dx/2.0, min_xyz[1]+dy/2.0);
+	return Vec<2>(min_xyz[0]+dx/2.0, min_xyz[1]+dy/2.0);
+}
+
+void tsunamisquares::World::bumpCenter(const double bump_height) {;
+
+	Vec<2> centerLoc = centralLoc();
 
 	UIndex centralID = getNearest_rtree(centerLoc, 1, false).begin()->second;
 
@@ -1053,19 +1052,8 @@ void tsunamisquares::World::flattenBottom(const double &depth) {
 
 void tsunamisquares::World::gaussianPile(const double hgauss, const double std){
     std::map<UIndex, Square>::iterator sit;
-    LatLonDepth min_bound, max_bound, centerLLD;
-	Vec<3> min_xyz, max_xyz;
-	double dx, dy;
-	get_bounds(min_bound, max_bound);
+    Vec<2> centerLoc = centralLoc();
 
-	min_xyz = Vec<3>(min_bound.lon(), min_bound.lat(), min_bound.altitude());
-	max_xyz = Vec<3>(max_bound.lon(), max_bound.lat(), max_bound.altitude());
-	dx = max_xyz[0]-min_xyz[0];
-	dy = max_xyz[1]-min_xyz[1];
-
-	Vec<2> centerLoc = Vec<2>(min_xyz[0]+dx/2.0, min_xyz[1]+dy/2.0);
-
-    // Assign the depth for all vertices to be newDepth
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         double disc = hgauss * exp(-pow((tsunamisquares::boostDistance(centerLoc, sit->second.xy())/std), 2));
         sit->second.set_height(-sit->second.xyz()[2] + disc);

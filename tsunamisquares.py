@@ -11,6 +11,8 @@ import matplotlib.colorbar as mcolorbar
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.basemap import Basemap
 import matplotlib.font_manager as mfont
+import scipy as sp
+from geographiclib.geodesic import Geodesic as geo
 # -------
 #import quakelib
 from os import system
@@ -61,8 +63,6 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = N
     ax.get_xaxis().get_major_formatter().set_useOffset(False)
     ax.get_yaxis().get_major_formatter().set_useOffset(False)
     
-    # I don't know why, but the y-axis is backwards
-    ax.invert_yaxis()
     
     divider = make_axes_locatable(ax)
     cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
@@ -101,7 +101,7 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = N
             writer.grab_frame()
             
             TIME +=T_STEP
-
+            
 
 # --------------------------------------------------------------------------------
 def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax = None):
@@ -194,6 +194,79 @@ def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_fi
             TIME +=T_STEP
 
 
+def make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file):
+    # Get ranges
+    print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
+    #TODO: check for simulation that wraps around int date line.
+    lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
+    lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
+    z_min,z_max = sim_data['z'].min(),sim_data['z'].max()
+
+    centralloc = ((lon_min+lon_max)/2, (lat_min+lat_max)/2)
+    
+    # Split the data up into arrays for each time step
+    split_data = np.split(sim_data, np.unique(sim_data['time']).shape[0])
+
+    # Initialize movie writing stuff
+    FFMpegWriter = manimation.writers['ffmpeg']
+    metadata = dict(title='TsunamiSquares', artist='Matplotlib',
+            comment='Animation')
+    writer = FFMpegWriter(fps=FPS, metadata=metadata, bitrate=1000)
+
+    # Initialize the frame and axes
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    plt.xlim(lon_min, lon_max)
+    plt.ylim(z_min, z_max)
+    ax.get_xaxis().get_major_formatter().set_useOffset(False)
+    ax.get_yaxis().get_major_formatter().set_useOffset(False)
+    
+    divider = make_axes_locatable(ax)
+    # Increment the time from T_MIN
+    TIME = T_MIN
+
+    first_step = sim_data[ sim_data['time'] == T_MIN ]
+    Nrows = len(np.unique(first_step['lat']))
+    midlat = np.unique(first_step['lat'])[int(Nrows/2)]
+        
+    # Make array of distances from centralloc
+    dist_array = []
+    geod = geo(6371000, 0)
+    for cell in first_step[ first_step['lat'] == midlat ]:
+        distance = geod.Inverse(cell['lat'], cell['lon'], centralloc[1], centralloc[0])['s12']
+        dist_array.append(abs(distance))
+    dist_array = np.array(dist_array)
+
+    sim_plot, = ax.plot([], [], 'b')
+    analytic_plot, = ax.plot([], [], 'r')
+    with writer.saving(fig, save_file, DPI):
+        for index in range(int(N_STEP)):
+            # Get the subset of data corresponding to current time
+            this_step = split_data[index]
+            this_step = this_step[this_step['lat'] == midlat]
+            time = this_step['time'][0]
+            
+            print("step: "+str(index)+"  time: "+str(time))
+            assert len(this_step) > 0
+
+            X = this_step['lon']
+            Z = this_step['z']
+            ALT = this_step['alt']
+            
+            analytic_Z = []
+            for dist in dist_array:
+                analytic_Z.append(analyticGauss(dist, TIME, 10, 5000, 1000))
+            # Plot the cross section for this time step
+            sim_plot.set_data(X, Z)
+            analytic_plot.set_data(X, analytic_Z)
+            # Text box with the time
+            plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time)/60, int(time)%60), bbox={'facecolor':'yellow', 'pad':5})
+            
+                
+            writer.grab_frame()
+            
+            TIME +=T_STEP
+            
 # =============================================================
 def plot_eq_displacements(LLD_FILE, LEVELS, save_file):
     # Read displacement data
@@ -394,6 +467,18 @@ def plot_eq_disps_horiz(disp_file, save_file):
     print("Saved to "+save_file)
 
 
+def analyticGaussIntegrand(k, r, t, Dc, Rc, depth):
+    dispersion = np.sqrt(9.80665*k*np.tanh(k*depth))
+    #dispersion = k*np.sqrt(9.80665*depth)
+    return Dc*Rc**2*k/2*np.cos(dispersion*t)*sp.special.jv(0, k*r)*np.exp(-(k*Rc/2)**2)
+
+
+def analyticGauss(r, t, Dc, Rc, depth):
+    return sp.integrate.quad(analyticGaussIntegrand, 0, 1e3, args=(r, t, Dc, Rc, depth), points=[0, 2e-3])[0]
+#    k = np.linspace(0, 2e-3, 1e4)
+#    sumd = np.sum(analyticGaussIntegrand(k, r, t, Dc, Rc, depth))
+#    return np.diff(k)[0]*sumd
+
 # =============================================================
 def bathy_topo_map(LLD_FILE, save_file):
     # Read bathymetry/topography data
@@ -456,12 +541,13 @@ def bathy_topo_map(LLD_FILE, save_file):
 if __name__ == "__main__":
     
 #    MODE = "generate"
-    MODE = "animate"
+#    MODE = "animate"
 #    MODE = "eq_field_plot"
 #    MODE = "eq_field_plot_horiz"
 #    MODE = "plot_bathy"
 #    MODE = "gen_bathyfile_interp"
 #    MODE = "eq_field_eval"
+    MODE = "verify"
     
     if MODE == "generate": #read bethymetry file
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====
@@ -494,7 +580,7 @@ if __name__ == "__main__":
     
     if MODE == "animate":
         sim_file = "tsunami_output.txt"
-        save_file = sim_file.split(".")[0]+".mp4"
+        save_file = sim_file.split(".")[0]+"_grid.mp4"
         sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
         FPS = 10 #FRAMES PER SECOND
         DPI = 100
@@ -569,3 +655,22 @@ if __name__ == "__main__":
 
 
 
+    if MODE == "verify":
+        sim_file = "tsunami_output.txt"
+        save_file = sim_file.split(".")[0]+"_crosssection.mp4"
+        sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
+        FPS = 10 #FRAMES PER SECOND
+        DPI = 100
+        T_MAX,T_MIN = sim_data['time'].max(),sim_data['time'].min()
+        T_STEP = np.unique(sim_data['time'])[1] - np.unique(sim_data['time'])[0]
+        assert T_STEP > 0
+        N_STEP = float(T_MAX-T_MIN)/T_STEP
+        zminmax = None
+#        zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
+        make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file)
+        
+        
+        
+        
+        
+        
