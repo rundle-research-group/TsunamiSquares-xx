@@ -237,8 +237,8 @@ def make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP
         dist_array.append(abs(distance))
     dist_array = np.array(dist_array)
 
-    sim_plot, = ax.plot([], [], 'b')
-    analytic_plot, = ax.plot([], [], 'r')
+    sim_plot = ax.plot([], [], 'b')[0]
+    analytic_plot = ax.plot([], [], 'r')[0]
     with writer.saving(fig, save_file, DPI):
         for index in range(int(N_STEP)):
             # Get the subset of data corresponding to current time
@@ -546,8 +546,8 @@ if __name__ == "__main__":
 #    MODE = "eq_field_plot_horiz"
 #    MODE = "plot_bathy"
 #    MODE = "gen_bathyfile_interp"
-#    MODE = "eq_field_eval"
-    MODE = "verify"
+    MODE = "eq_field_eval"
+#    MODE = "verify"
     
     if MODE == "generate": #read bethymetry file
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====
@@ -563,7 +563,7 @@ if __name__ == "__main__":
 #        MIN_LON = -120.2
 #        MAX_LON = -119.2
         # =================================
-        SAVE_NAME = "bathymetry/Tohoku_lld.txt"
+        SAVE_NAME = "bathymetry/Tohoku_largeRegion_lld.txt"
         MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
         EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
         EVID      = 1196
@@ -622,21 +622,21 @@ if __name__ == "__main__":
 #        MIN_LON = -120.2
 #        MAX_LON = -119.2
         # =================================
-        SAVE_NAME = "bathymetry/Tohoku_lld.txt"
+        SAVE_NAME = "bathymetry/Tohoku_x3_lld.txt"
         MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
         EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
         EVID      = 1196
-        MIN_LAT = 33
-        MAX_LAT = 44
-        MIN_LON = 138.4
-        MAX_LON = 145
+        MIN_LAT = 34.7
+        MAX_LAT = 41.6
+        MIN_LON = 140.1
+        MAX_LON = 144.5
         # =================================
         FACTOR  = 3
         # --- write grid ------
         lats, lons, bathy = read_ETOPO1.grab_ETOPO1_subset_interpolated(ETOPO1_FILE,min_lat=MIN_LAT,max_lat=MAX_LAT,min_lon=MIN_LON,max_lon=MAX_LON, factor=FACTOR)
         read_ETOPO1.write_grid(SAVE_NAME,lats,lons,bathy)
         # ---- compute field and write it ------
-        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF  --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, SAVE_NAME))
+        #system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF  --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, SAVE_NAME))
 
 
     if MODE == "eq_field_eval":
@@ -645,10 +645,10 @@ if __name__ == "__main__":
 #        EVENTS    = "~/VirtQuake/UCERF3_reindexed/VQ_runs/events_UCERF3_ReIndexed_AseismicCut_0-11_taper_drops0-9_50kyr_dyn0-2_greenLimits.h5"
 #        EVID      = 39951
         # =================================
-        SAVE_NAME = "bathymetry/Tohoku_lld.txt"
+        SAVE_NAME = "bathymetry/Tohoku_x3_lld.txt"
         MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
         EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
-        EVID      = 8
+#        EVID      = 8
         # ---- compute field and write it ------
 #        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, SAVE_NAME))
         system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --model_file {} --event_file {} --uniform_slip 10 --lld_file {} ".format(MODEL, EVENTS, SAVE_NAME))
