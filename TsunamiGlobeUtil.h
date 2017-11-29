@@ -52,6 +52,10 @@ using namespace GeographicLib;
 namespace bg = boost::geometry;
 namespace bgi = boost::geometry::index;
 
+#include <netcdf>
+using namespace netCDF;
+
+
 #define EARTH_MEAN_RADIUS       6371000.0           // in m
 #define EARTH_EQUATORIAL_RADIUS 6378137.0           // in m
 #define EARTH_POLAR_RADIUS      6356752.314245      // in m
@@ -627,8 +631,6 @@ namespace tsunamisquares {
     //	bg::for_each_point(poly, print_boost_coords<point_spheq>);
     //	std::cout << std::endl;
     //}
-
-
 
 
 

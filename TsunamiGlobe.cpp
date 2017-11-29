@@ -1571,6 +1571,134 @@ void tsunamisquares::World::write_square_ascii(std::ostream &out_stream, const d
     next_line(out_stream);
 }
 
+
+void tsunamisquares::World::initilize_netCDF_file(const std::string file_name){
+	std::map<UIndex, Square>::const_iterator sit;
+	// We are writing 3D data, a NLAT x NLON lat-lon grid, with NSTEPS timesteps of data.
+
+	// Define nlat and nlon from world data
+	int NLAT = num_lats();
+	int NLON = num_lons();
+
+	// For the units attributes.
+	std::string  UNITS = "units";
+	std::string  TIME_UNITS = "seconds";
+	std::string  LENGTH_UNITS = "meters";
+	std::string  LAT_UNITS = "degrees_north";
+	std::string  LON_UNITS = "degrees_east";
+
+	// We will write latitude and longitude fields.
+	float lats[NLAT],lons[NLON];
+	for(sit=_squares.begin(); sit!=_squares.end(); sit++){
+		int lat_index = floor(sit->first / double(NLON));
+		int lon_index = sit->first % NLON;
+
+		lats[lat_index] = sit->second.xy()[1];
+		lons[lon_index] = sit->second.xy()[0];
+	}
+
+
+	// Create the file.
+	NcFile dataFile(file_name, NcFile::replace);
+
+	// Define the dimensions. NetCDF will hand back an ncDim object for
+	// each.
+	NcDim timeDim = dataFile.addDim("time");  //adds an unlimited dimension
+	NcDim latDim = dataFile.addDim("latitude", NLAT);
+	NcDim lonDim = dataFile.addDim("longitude", NLON);
+
+	// Define the coordinate variables.
+	NcVar timeVar = dataFile.addVar("time", ncFloat, timeDim);
+	NcVar latVar = dataFile.addVar("latitude", ncFloat, latDim);
+	NcVar lonVar = dataFile.addVar("longitude", ncFloat, lonDim);
+
+	// Define units attributes for coordinate vars. This attaches a
+	// text attribute to each of the coordinate variables, containing
+	// the units.
+	timeVar.putAtt(UNITS, TIME_UNITS);
+	latVar.putAtt(UNITS, LAT_UNITS);
+	lonVar.putAtt(UNITS, LON_UNITS);
+
+
+	//Dimension vector for correctly sizing data variables
+	std::vector<NcDim> dimVector;
+	dimVector.push_back(timeDim);
+	dimVector.push_back(latDim);
+	dimVector.push_back(lonDim);
+
+	// Define the netCDF variables for the data
+	NcVar levelVar = dataFile.addVar("level", ncFloat, dimVector);
+	NcVar heightVar = dataFile.addVar("height", ncFloat, dimVector);
+	NcVar altVar = dataFile.addVar("altitude", ncFloat, dimVector);
+
+	// Define units attributes for coordinate vars. This attaches a
+	// text attribute to each of the coordinate variables, containing
+	// the units.
+	levelVar.putAtt(UNITS, LENGTH_UNITS);
+	heightVar.putAtt(UNITS, LENGTH_UNITS);
+	altVar.putAtt(UNITS, LENGTH_UNITS);
+
+	// Write the coordinate variable data to the file.
+	latVar.putVar(lats);
+	lonVar.putVar(lons);
+}
+
+void tsunamisquares::World::append_netCDF_file(const std::string &file_name, const int &current_step, const float &time){
+	std::map<UIndex, Square>::const_iterator sit;
+
+	NcFile dataFile(file_name, NcFile::write);
+
+	long NLAT = dataFile.getDim("latitude").getSize();
+	long NLON = dataFile.getDim("longitude").getSize();
+
+	// Get the variables we'll be writing to
+	NcVar timeVar, levelVar, heightVar, altVar;
+	timeVar = dataFile.getVar("time");
+	levelVar = dataFile.getVar("level");
+	heightVar = dataFile.getVar("height");
+	altVar = dataFile.getVar("altitude");
+
+	float time_out[1];
+	float level_out[NLAT][NLON];
+	float height_out[NLAT][NLON];
+	float alt_out[NLAT][NLON];
+
+	// Populate the data arrays from world data
+	time_out[0] = time;
+	for(sit=_squares.begin(); sit!=_squares.end(); sit++){
+		int lat_index = std::floor(sit->first / double(NLON));
+		int lon_index = sit->first % NLON;
+
+		level_out[lat_index][lon_index] = squareLevel(sit->first);
+		height_out[lat_index][lon_index] = sit->second.height();
+		alt_out[lat_index][lon_index] = sit->second.xyz()[2];
+	}
+
+
+	std::vector<size_t> startp, countp, starttime, counttime;
+
+	// Starting index of data to be written.  Arrays at each time step start at [timeStep, 0, 0]
+	starttime.push_back(current_step);
+
+	startp.push_back(current_step);
+	startp.push_back(0);
+	startp.push_back(0);
+
+	// Size of array to be written.  One time step, nlats and nlons in those dims.
+	counttime.push_back(1);
+
+	countp.push_back(1);
+	countp.push_back(NLAT);
+	countp.push_back(NLON);
+
+	timeVar.putVar(starttime,counttime,time_out);
+	levelVar.putVar(startp,countp,level_out);
+	heightVar.putVar(startp,countp,height_out);
+	altVar.putVar(startp,countp,alt_out);
+}
+
+
+
 int tsunamisquares::World::read_bathymetry(const std::string &file_name) {
     std::ifstream   in_file;
     UIndex          i, j, num_squares, num_vertices, num_lats, num_lons;
