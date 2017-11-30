@@ -34,71 +34,99 @@ If a square sits on a beach at 5m above sea level and has 4m of water on it, the
 VQ_DIR = "~/VirtQuake/"
 
 # --------------------------------------------------------------------------------
-def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = None):
-    # Get ranges
-    print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
-    lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
-    lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
-    if(zminmax == None):
-        z_min,z_max = sim_data['z'].min(),sim_data['z'].max()
-    else:
-        z_min,z_max = zminmax
-    cmap = plt.get_cmap('Blues_r')
-    norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
-    interp = 'none'
+def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = None, doBasemap = False):
     
-    # Split the data up into arrays for each time step
-    split_data = np.split(sim_data, np.unique(sim_data['time']).shape[0])
+    #sim_data is expected to be a netcdf dataset 
+
+    # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays
+    times = np.array(sim_data.variables['time'])
+    lons = np.array(sim_data.variables['longitude'])
+    lats = np.array(sim_data.variables['latitude'])
+    
+    # But keep the data from each time step in netCDF variable form, and slice into it as needed
+    level_ncVar = sim_data.variables['level']
+    height_ncVar = sim_data.variables['height']
+    alt_ncVar = sim_data.variables['altitude']
+    
+    # Get ranges
+    z_min =  np.inf
+    z_max = -np.inf
+    z_avs = []
+    for levelstep in level_ncVar:
+        z_min = min(levelstep.min(), z_min)
+        z_max = max(levelstep.max(), z_max)
+        z_avs.append(levelstep.mean())
+    print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
+    lon_min,lon_max = lons.min(), lons.max()
+    lat_min,lat_max = lats.min(), lats.max()
+    mean_lat = lats.mean()
+    mean_lon = lons.mean()    
+    if(zminmax != None): z_min,z_max = zminmax
+    
 
     # Initialize movie writing stuff
     FFMpegWriter = manimation.writers['ffmpeg']
-    metadata = dict(title='TsunamiSquares', artist='Matplotlib',
-            comment='Animation')
+    metadata = dict(title='TsunamiSquares', artist='Matplotlib', comment='Animation')
     writer = FFMpegWriter(fps=FPS, metadata=metadata, bitrate=1000)
 
     # Initialize the frame and axes
     fig = plt.figure()
-    ax = fig.add_subplot(111)
-    plt.xlim(lon_min, lon_max)
-    plt.ylim(lat_min, lat_max)
-    ax.get_xaxis().get_major_formatter().set_useOffset(False)
-    ax.get_yaxis().get_major_formatter().set_useOffset(False)
     
+    if not doBasemap:
+#        ax = fig.add_subplot(111)
+        plt.xlim(lon_min, lon_max)
+        plt.ylim(lat_min, lat_max)
+#        ax.get_xaxis().get_major_formatter().set_useOffset(False)
+#        ax.get_yaxis().get_major_formatter().set_useOffset(False)
+        ax = fig.add_subplot(111)
+    else:
+        m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
+                llcrnrlon=lon_min, urcrnrlon=lon_max, lat_0=mean_lat, lon_0=mean_lon, resolution='h')
+        m.drawmeridians(np.linspace(lon_min,lon_max,num=5.0),labels=[0,0,0,1], linewidth=0)
+        m.drawparallels(np.linspace(lat_min,lat_max,num=5.0),labels=[1,0,0,0], linewidth=0)
+        m.drawcoastlines(linewidth=0.5)
+        m.ax = fig.add_subplot(111)
+
+    # Colorbar
+    cmap = plt.get_cmap('Blues_r')
+    landcolor = 'orange'#'black'#'#FFFFCC'
+    cmap.set_bad(landcolor, 1.0)
     
+    norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
     divider = make_axes_locatable(ax)
     cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
+    
     cb = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norm)
+    framelabelfont = mfont.FontProperties(style='normal', variant='normal', size=14)
+    plt.figtext(0.95, 0.7, r'water altitude $[m]$', rotation='vertical', fontproperties=framelabelfont)
+    
+    
     # Increment the time from T_MIN
     TIME = T_MIN
 
-    first_step = sim_data[ sim_data['time'] == T_MIN ]
-    Ncols = len(np.unique(first_step['lon']))
-
     surface = None
     with writer.saving(fig, save_file, DPI):
-        for index in range(int(N_STEP)):
+        for index in range(20):#range(int(N_STEP)):
             # Get the subset of data corresponding to current time
-            this_step = split_data[index]
-            time = this_step['time'][0]
+            this_level  = level_ncVar[index]
+            this_height = height_ncVar[index]
+            this_alt    = alt_ncVar[index]
+            time   = times[index]
             
-            print("step: "+str(index)+"  time: "+str(time)+" num_points: "+str(len(this_step)))
-            assert len(this_step) > 0
-
-            X = this_step['lon'].reshape(-1, Ncols)
-            Y = this_step['lat'].reshape(-1, Ncols)
-            Z = this_step['z'].reshape(-1, Ncols)
-            ALT = this_step['alt'].reshape(-1, Ncols)
+            # Masked array via conditional, don't color the land unless it has water on it
+            masked_data = np.ma.masked_where(this_height == 0.0000, this_level)            
+            
+            print("step: {}  time: {}".format(index, time))
 
             # Plot the surface for this time step
             if surface is None:
-                surface = ax.imshow(Z,cmap=cmap,origin='upper',norm=norm,extent=[lon_min,lon_max,lat_max,lat_min],interpolation=interp)
+                ax.imshow(masked_data, cmap=cmap,origin='lower', norm=norm, extent=[lon_min,lon_max,lat_max,lat_min], interpolation='none')
             else:
-                surface.set_data(Z)
+                surface.set_data(masked_data)
                 
             # Text box with the time
             plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time)/60, int(time)%60), bbox={'facecolor':'yellow', 'pad':5})
             
-                
             writer.grab_frame()
             
             TIME +=T_STEP
@@ -112,12 +140,13 @@ def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_fi
     lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
     mean_lat = 0.5*(lat_min + lat_max)
     mean_lon = 0.5*(lon_min + lon_max)
-    lon_range = lon_max - lon_min
-    lat_range = lat_max - lat_min
+    
     if(zminmax == None):
         z_min,z_max = sim_data['z'].min(),sim_data['z'].max()
     else:
         z_min,z_max = zminmax
+        
+    
     cmap = plt.get_cmap('Blues_r')
     norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
     interp = 'none'
@@ -550,6 +579,9 @@ if __name__ == "__main__":
 #    MODE = "eq_field_eval"
 #    MODE = "verify"
     
+    
+    SIMFILE = "tsunami_output.nc"    
+    
     if MODE == "generate": #read bethymetry file
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====
         ETOPO1_FILE = "ETOPO1/ETOPO1_Ice_g_gmt4.grd"
@@ -580,21 +612,25 @@ if __name__ == "__main__":
         system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF  --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, SAVE_NAME))
     
     if MODE == "animate":
-        sim_file = "tsunami_output.nc"
+        sim_file = SIMFILE
         save_file = sim_file.split(".")[0]+"_grid.mp4"
-        sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
-        FPS = 10 #FRAMES PER SECOND
+        #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
+        sim_data = Dataset(sim_file, 'r', format='NETCDF4')
+        times = np.array(sim_data.variables['time'])
+        
+        FPS = 20 #FRAMES PER SECOND
         DPI = 100
-        T_MAX,T_MIN = sim_data['time'].max(),sim_data['time'].min()
-        T_STEP = np.unique(sim_data['time'])[1] - np.unique(sim_data['time'])[0]
+        T_MIN, T_MAX = times.min(), times.max()
+        T_STEP = times[1] - times[0]
         assert T_STEP > 0
         N_STEP = float(T_MAX-T_MIN)/T_STEP
         zminmax = None
 #        zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
+        MAKE_MAP = False
         # Makes animation on a Basemap plot
 #        make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax)
         # Makes animation without any background Basemap
-        make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax)
+        make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax, doBasemap = MAKE_MAP)
 
     if MODE == "eq_field_plot":
         Levels = [-.3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
@@ -657,9 +693,10 @@ if __name__ == "__main__":
 
 
     if MODE == "verify":
-        sim_file = "tsunami_output.nc"
+        sim_file = SIMFILE
         save_file = sim_file.split(".")[0]+"_crosssection.mp4"
-        sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
+        # For text files
+        #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
         FPS = 10 #FRAMES PER SECOND
         DPI = 100
         T_MAX,T_MIN = sim_data['time'].max(),sim_data['time'].min()
