@@ -34,10 +34,8 @@ If a square sits on a beach at 5m above sea level and has 4m of water on it, the
 VQ_DIR = "~/VirtQuake/"
 
 # --------------------------------------------------------------------------------
-def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = None, doBasemap = False):
-    
+def make_grid_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = None, doBasemap = False):    
     #sim_data is expected to be a netcdf dataset 
-
     # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays
     times = np.array(sim_data.variables['time'])
     lons = np.array(sim_data.variables['longitude'])
@@ -132,104 +130,10 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = N
             writer.grab_frame()
             
             TIME +=T_STEP
-            
-
-# --------------------------------------------------------------------------------
-# This functionality is now present in make_animation
-def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax = None):
-    # Get ranges
-    print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
-    lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
-    lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
-    mean_lat = 0.5*(lat_min + lat_max)
-    mean_lon = 0.5*(lon_min + lon_max)
-    
-    if(zminmax == None):
-        z_min,z_max = sim_data['z'].min(),sim_data['z'].max()
-    else:
-        z_min,z_max = zminmax
-        
-    
-    cmap = plt.get_cmap('Blues_r')
-    norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
-    interp = 'none'
-    landcolor = 'orange'#'black'#'#FFFFCC'
-    framelabelfont = mfont.FontProperties(family='Arial', style='normal', variant='normal', size=14)
-    
-    # Split the data up into arrays for each time step
-    split_data = np.split(sim_data, np.unique(sim_data['time']).shape[0])
-    
-    # Initialize movie writing stuff
-    FFMpegWriter = manimation.writers['ffmpeg']
-    metadata = dict(title='TsunamiSquares', artist='Matplotlib',
-                    comment='Basemap Animation')
-    writer = FFMpegWriter(fps=FPS, metadata=metadata)
-    
-    # Initialize the frame and axes
-    fig = plt.figure()
-
-    m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
-            llcrnrlon=lon_min, urcrnrlon=lon_max, lat_0=mean_lat, lon_0=mean_lon, resolution='h')
-    m.ax = fig.add_subplot(111)
-
-    m.drawmeridians(np.linspace(lon_min,lon_max,num=5.0),labels=[0,0,0,1], linewidth=0)
-    m.drawparallels(np.linspace(lat_min,lat_max,num=5.0),labels=[1,0,0,0], linewidth=0)
-    m.drawcoastlines(linewidth=0.5)
-    #m.drawcountries()
-    #m.drawstates()
-    #m.fillcontinents(color=landcolor)
-    #m.shadedrelief()
-    
-    # Colorbar
-    divider = make_axes_locatable(m.ax)
-    cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
-    plt.figtext(0.95, 0.7, r'water altitude $[m]$', rotation='vertical', fontproperties=framelabelfont)
-    cb = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norm)
-    
-    # Increment the time from T_MIN
-    TIME = T_MIN
-    
-    first_step = sim_data[ sim_data['time'] == T_MIN ]
-    Ncols = len(np.unique(first_step['lon']))
-    
-    surface = None
-    with writer.saving(fig, save_file, DPI):
-        for index in range(int(N_STEP)):
-            # Get the subset of data corresponding to current time
-            this_step = split_data[index]
-            time = this_step['time'][0]
-                    
-            print("step: "+str(index)+"  time: "+str(time)+" num_points: "+str(len(this_step)))
-            assert len(this_step) > 0
-                
-            X = this_step['lon'].reshape(-1, Ncols)
-            Y = this_step['lat'].reshape(-1, Ncols)
-            Z = this_step['z'].reshape(-1, Ncols)
-            ALT = this_step['alt'].reshape(-1, Ncols)
-            
-            # Masked array via conditional, don't color the land unless it has water on it
-            masked_data = np.ma.masked_where(np.logical_and(np.array(Z == 0.0000),np.array(ALT >= 0.0)), Z)
-            
-            # Set masked pixels to the land color
-            cmap.set_bad(landcolor, 1.0)  # set alpha=0.0 for transparent
-            
-            # Plot the surface for this time step
-            if surface is None:
-                surface = m.ax.imshow(masked_data,cmap=cmap,origin='lower',norm=norm,extent=[lon_min,lon_max,lat_max,lat_min],interpolation=interp)
-            else:
-                surface.set_data(masked_data)
-                
-            # Text box with the time
-            plt.figtext(0.129, 0.82, 'Time: {:02d}:{:02d}'.format(int(time)/60, int(time)%60), bbox={'facecolor':'yellow', 'pad':5})
-                
-            writer.grab_frame()
-        
-            TIME +=T_STEP
 
 
 def make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file):
-        #sim_data is expected to be a netcdf dataset 
-
+    #sim_data is expected to be a netcdf dataset 
     # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays
     times = np.array(sim_data.variables['time'])
     lons = np.array(sim_data.variables['longitude'])
@@ -290,8 +194,6 @@ def make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP
     
     with writer.saving(fig, save_file, DPI):
         for index in range(int(N_STEP)):
-            # Get the subset of data corresponding to current time
-            this_level  = level_ncVar[index]
             time   = times[index]
             print("step: {}  time: {}".format(index, time))
             
@@ -300,16 +202,28 @@ def make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP
                 analytic_Z.append(analyticGauss(dist, time, 10, 5000, 1000))
             
             # Plot the cross section for this time step
-            sim_plot.set_data(lons, this_level[midlat_index])
+            sim_plot.set_data(lons, level_ncVar[index][midlat_index])
             analytic_plot.set_data(lons, analytic_Z)
             
             # Text box with the time
             plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time)/60, int(time)%60), bbox={'facecolor':'yellow', 'pad':5})
                 
             writer.grab_frame()
-            
-            
-# =============================================================
+
+
+def analyticGaussIntegrand(k, r, t, Dc, Rc, depth):
+    dispersion = np.sqrt(9.80665*k*np.tanh(k*depth))
+    #dispersion = k*np.sqrt(9.80665*depth)
+    return Dc*Rc**2*k/2*np.cos(dispersion*t)*sp.special.jv(0, k*r)*np.exp(-(k*Rc/2)**2)
+
+
+def analyticGauss(r, t, Dc, Rc, depth):
+    return sp.integrate.quad(analyticGaussIntegrand, 0, 1e3, args=(r, t, Dc, Rc, depth), points=[0, 2e-3])[0]
+#    k = np.linspace(0, 2e-3, 1e4)
+#    sumd = np.sum(analyticGaussIntegrand(k, r, t, Dc, Rc, depth))
+#    return np.diff(k)[0]*sumd
+
+
 def plot_eq_displacements(LLD_FILE, LEVELS, save_file):
     # Read displacement data
     disp_data = np.genfromtxt(LLD_FILE, dtype=[('lat','f8'),('lon','f8'), ('z','f8')],skip_header=3)
@@ -369,7 +283,7 @@ def plot_eq_displacements(LLD_FILE, LEVELS, save_file):
     plt.savefig(save_file,dpi=100)
     print("Saved to "+save_file)
 
-# =============================================================
+
 def plot_eq_disps_horiz(disp_file, save_file):
     # Read displacement data
     disp_data = np.genfromtxt(disp_file, dtype=[('lon','f8'), ('lat','f8'), ('z','f8'), ('eU','f8'), ('nV','f8')])
@@ -411,7 +325,6 @@ def plot_eq_disps_horiz(disp_file, save_file):
     #LEVELSn = np.concatenate((-1*np.logspace(-3, np.log10(n_lim), 6)[::-1], np.logspace(-3, np.log10(n_lim), 6)))
     LEVELSn = np.concatenate((-1*np.linspace(0.01, n_lim, 6)[::-1], np.linspace(0.01, n_lim, 6)))
     
-    
     interp = 'cubic'
     landcolor = '#FFFFCC'
     framelabelfont = mfont.FontProperties(family='Arial', style='normal', variant='normal', size=14)
@@ -445,7 +358,6 @@ def plot_eq_disps_horiz(disp_file, save_file):
 
     plt.savefig(save_file+'_z.png',dpi=100)
     
-    
     # Initialize the frame and axes
     fig = plt.figure(1)    
     m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
@@ -474,7 +386,6 @@ def plot_eq_disps_horiz(disp_file, save_file):
     m.contourf(X, Y, masked_data, LEVELSe, cmap=cmap, norm=norme, extend='both', zorder=1)
 
     plt.savefig(save_file+'_e.png',dpi=100)
-
 
     # Initialize the frame and axes
     fig = plt.figure(2)    
@@ -505,23 +416,9 @@ def plot_eq_disps_horiz(disp_file, save_file):
 
     plt.savefig(save_file+'_n.png',dpi=100)    
     
-    
     print("Saved to "+save_file)
 
 
-def analyticGaussIntegrand(k, r, t, Dc, Rc, depth):
-    dispersion = np.sqrt(9.80665*k*np.tanh(k*depth))
-    #dispersion = k*np.sqrt(9.80665*depth)
-    return Dc*Rc**2*k/2*np.cos(dispersion*t)*sp.special.jv(0, k*r)*np.exp(-(k*Rc/2)**2)
-
-
-def analyticGauss(r, t, Dc, Rc, depth):
-    return sp.integrate.quad(analyticGaussIntegrand, 0, 1e3, args=(r, t, Dc, Rc, depth), points=[0, 2e-3])[0]
-#    k = np.linspace(0, 2e-3, 1e4)
-#    sumd = np.sum(analyticGaussIntegrand(k, r, t, Dc, Rc, depth))
-#    return np.diff(k)[0]*sumd
-
-# =============================================================
 def bathy_topo_map(LLD_FILE, save_file):
     # Read bathymetry/topography data
     data = np.genfromtxt(LLD_FILE, dtype=[('lat','f8'),('lon','f8'), ('z','f8')],skip_header=3)
@@ -583,54 +480,79 @@ def bathy_topo_map(LLD_FILE, save_file):
 if __name__ == "__main__":
     
 #    MODE = "generate"
-#    MODE = "animate"
+#    MODE = "eq_field_eval"
 #    MODE = "eq_field_plot"
 #    MODE = "eq_field_plot_horiz"
 #    MODE = "plot_bathy"
-#    MODE = "gen_bathyfile_interp"
-#    MODE = "eq_field_eval"
+#    MODE = "animate"
     MODE = "verify"
     
-    
-    SIMFILE = "tsunami_output_test.nc"    
-    
-    if MODE == "generate": #read bethymetry file
+    SIMFILE = "ChannelIslands_x5_gauss_output.nc"    
+     
+    if MODE == "generate":
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====
         ETOPO1_FILE = "ETOPO1/ETOPO1_Ice_g_gmt4.grd"
+        FACTOR  = 5
         # =================================
-#        SAVE_NAME = "bathymetry/Channel_Islands_largest_subset_lld.txt"
+        SAVE_NAME = "bathymetry/ChannelIslands_x5_lld.txt"
+        MIN_LAT = 33.75
+        MAX_LAT = 34.3
+        MIN_LON = -120.2
+        MAX_LON = -119.2
+        # =================================
+#        SAVE_NAME = "bathymetry/Tohoku_x1_lld.txt"
+#        MIN_LAT = 34.7
+#        MAX_LAT = 41.6
+#        MIN_LON = 140.1
+#        MAX_LON = 144.5
+        # =================================
+        # --- write grid ------
+        lats, lons, bathy = read_ETOPO1.grab_ETOPO1_subset_interpolated(ETOPO1_FILE,min_lat=MIN_LAT,max_lat=MAX_LAT,min_lon=MIN_LON,max_lon=MAX_LON, factor=FACTOR)
+        read_ETOPO1.write_grid(SAVE_NAME,lats,lons,bathy)
+
+
+    if MODE == "eq_field_eval":
+        # =================================
+#        LLD_NAME = "bathymetry/Channel_Islands_largest_subset_lld.txt"
 #        MODEL     = "~/VirtQuake/UCERF3_reindexed/Model/UCERF3_VQmeshed_from_EQSIM_ReIndexed_AseismicCut_0-11_taper_drops0.9.h5"
 #        EVENTS    = "~/VirtQuake/UCERF3_reindexed/VQ_runs/events_UCERF3_ReIndexed_AseismicCut_0-11_taper_drops0-9_50kyr_dyn0-2_greenLimits.h5"
 #        EVID      = 39951
-#        # Larger subset
-#        MIN_LAT = 33.75
-#        MAX_LAT = 34.3
-#        MIN_LON = -120.2
-#        MAX_LON = -119.2
         # =================================
-        SAVE_NAME = "bathymetry/Tohoku_largeRegion_lld.txt"
+        LLD_NAME = "bathymetry/Tohoku_x3_lld.txt"
         MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
         EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
         EVID      = 1196
-        MIN_LAT = 33
-        MAX_LAT = 44
-        MIN_LON = 138.4
-        MAX_LON = 145
         # =================================
-        # --- write grid ------
-        lats,lons,bathy = read_ETOPO1.grab_ETOPO1_subset(ETOPO1_FILE,min_lat=MIN_LAT,max_lat=MAX_LAT,min_lon=MIN_LON,max_lon=MAX_LON)
-        read_ETOPO1.write_grid(SAVE_NAME,lats,lons,bathy)
         # ---- compute field and write it ------
-        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF  --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, SAVE_NAME))
+#        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, LLD_NAME))
+        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --model_file {} --event_file {} --uniform_slip 10 --lld_file {} ".format(MODEL, EVENTS, LLD_NAME))
+
+
+    if MODE == "eq_field_plot":
+        Levels = [-.3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
+        plot_eq_displacements("bathymetry/Channel_Islands_largest_subset_lld_dispField_event39951.txt",Levels, "outputs/disp_map.png")
     
+    
+    if MODE == "eq_field_plot_horiz":
+        EVID = 8
+        plot_eq_disps_horiz("fields/Tohoku_lld_dispField_event{}.xyuen".format(EVID), "fields/disp_map_event{}".format(EVID))
+        
+        
+    if MODE == "plot_bathy":
+        #Levels = [-3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
+        #bathy_topo_map("local/Channel_Islands.txt",Levels, "bathy_map.png")
+        bathy_file="bathymetry/ChannelIslands_x3_lld.txt"
+        save_file="ChannelIslands_x3_bathymap.png"
+        bathy_topo_map(bathy_file, save_file)
+
+
     if MODE == "animate":
         sim_file = SIMFILE
         save_file = sim_file.split(".")[0]+"_grid.mp4"
         #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
         sim_data = Dataset(sim_file, 'r', format='NETCDF4')
         times = np.array(sim_data.variables['time'])
-        
-        FPS = 20 #FRAMES PER SECOND
+        FPS = 20
         DPI = 100
         T_MIN, T_MAX = times.min(), times.max()
         T_STEP = times[1] - times[0]
@@ -638,72 +560,11 @@ if __name__ == "__main__":
         N_STEP = float(T_MAX-T_MIN)/T_STEP
         zminmax = None
 #        zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
-        MAKE_MAP = True
-        # Makes animation on a Basemap plot
-#        make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax)
-        # Makes animation without any background Basemap
-        make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax, doBasemap = MAKE_MAP)
-
-    if MODE == "eq_field_plot":
-        Levels = [-.3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
-        plot_eq_displacements("bathymetry/Channel_Islands_largest_subset_lld_dispField_event39951.txt",Levels, "outputs/disp_map.png")
-    
-    if MODE == "eq_field_plot_horiz":
-        EVID = 8
-        plot_eq_disps_horiz("fields/Tohoku_lld_dispField_event{}.xyuen".format(EVID), "fields/disp_map_event{}".format(EVID))
+        MAKE_MAP = False
+        # Makes animation
+        make_grid_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax, doBasemap = MAKE_MAP)
         
-    if MODE == "plot_bathy":
-        #Levels = [-3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
-        #bathy_topo_map("local/Channel_Islands.txt",Levels, "bathy_map.png")
-        bathy_topo_map("local/Channel_Islands_interp_larger.txt", "bathy_map_interp_larger_imshow.png")
         
-    if MODE == "gen_bathyfile_interp":
-        # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====
-        ETOPO1_FILE = "ETOPO1/ETOPO1_Ice_g_gmt4.grd"
-        # =================================
-#        SAVE_NAME = "bathymetry/Channel_Islands_largest_subset_lld.txt"
-#        MODEL     = "~/VirtQuake/UCERF3_reindexed/Model/UCERF3_VQmeshed_from_EQSIM_ReIndexed_AseismicCut_0-11_taper_drops0.9.h5"
-#        EVENTS    = "~/VirtQuake/UCERF3_reindexed/VQ_runs/events_UCERF3_ReIndexed_AseismicCut_0-11_taper_drops0-9_50kyr_dyn0-2_greenLimits.h5"
-#        EVID      = 39951
-#        # Larger subset
-#        MIN_LAT = 33.75
-#        MAX_LAT = 34.3
-#        MIN_LON = -120.2
-#        MAX_LON = -119.2
-        # =================================
-        SAVE_NAME = "bathymetry/Tohoku_x3_lld.txt"
-        MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
-        EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
-        EVID      = 1196
-        MIN_LAT = 34.7
-        MAX_LAT = 41.6
-        MIN_LON = 140.1
-        MAX_LON = 144.5
-        # =================================
-        FACTOR  = 3
-        # --- write grid ------
-        lats, lons, bathy = read_ETOPO1.grab_ETOPO1_subset_interpolated(ETOPO1_FILE,min_lat=MIN_LAT,max_lat=MAX_LAT,min_lon=MIN_LON,max_lon=MAX_LON, factor=FACTOR)
-        read_ETOPO1.write_grid(SAVE_NAME,lats,lons,bathy)
-        # ---- compute field and write it ------
-        #system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF  --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, SAVE_NAME))
-
-
-    if MODE == "eq_field_eval":
-#        LLD_NAME = "bathymetry/Channel_Islands_largest_subset_lld.txt"
-#        MODEL     = "~/VirtQuake/UCERF3_reindexed/Model/UCERF3_VQmeshed_from_EQSIM_ReIndexed_AseismicCut_0-11_taper_drops0.9.h5"
-#        EVENTS    = "~/VirtQuake/UCERF3_reindexed/VQ_runs/events_UCERF3_ReIndexed_AseismicCut_0-11_taper_drops0-9_50kyr_dyn0-2_greenLimits.h5"
-#        EVID      = 39951
-        # =================================
-        SAVE_NAME = "bathymetry/Tohoku_x3_lld.txt"
-        MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
-        EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
-#        EVID      = 8
-        # ---- compute field and write it ------
-#        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, SAVE_NAME))
-        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --model_file {} --event_file {} --uniform_slip 10 --lld_file {} ".format(MODEL, EVENTS, SAVE_NAME))
-
-
-
     if MODE == "verify":
         sim_file = SIMFILE
         save_file = sim_file.split(".")[0]+"_crosssection.mp4"
@@ -711,14 +572,12 @@ if __name__ == "__main__":
         #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
         sim_data = Dataset(sim_file, 'r', format='NETCDF4')
         times = np.array(sim_data.variables['time'])
-        
-        FPS = 20 #FRAMES PER SECOND
+        FPS = 20
         DPI = 100
         T_MIN, T_MAX = times.min(), times.max()
         T_STEP = times[1] - times[0]
         assert T_STEP > 0
         N_STEP = float(T_MAX-T_MIN)/T_STEP
-        
         make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file)
         
         
