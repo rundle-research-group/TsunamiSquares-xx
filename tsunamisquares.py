@@ -541,12 +541,12 @@ def bathy_topo_map(LLD_FILE, save_file):
 if __name__ == "__main__":
     
 #    MODE = "generate"
-#    MODE = "animate"
+    MODE = "animate"
 #    MODE = "eq_field_plot"
 #    MODE = "eq_field_plot_horiz"
 #    MODE = "plot_bathy"
 #    MODE = "gen_bathyfile_interp"
-    MODE = "eq_field_eval"
+#    MODE = "eq_field_eval"
 #    MODE = "verify"
     
     if MODE == "generate": #read bethymetry file
@@ -579,7 +579,7 @@ if __name__ == "__main__":
         system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF  --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, SAVE_NAME))
     
     if MODE == "animate":
-        sim_file = "tsunami_output.txt"
+        sim_file = "tsunami_output_test.txt"
         save_file = sim_file.split(".")[0]+"_grid.mp4"
         sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
         FPS = 10 #FRAMES PER SECOND
