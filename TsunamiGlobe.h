@@ -519,8 +519,10 @@ namespace tsunamisquares {
             void setSquareAccel(const UIndex &square_id, const Vec<2> &new_accel);
             void setSquareHeight(const UIndex &square_id, const double &new_height);
             // ======= File I/O ====================
+            int deformFromFile(const std::string &file_name);
             int write_file_kml(const std::string &file_name);
             void write_square_ascii(std::ostream &out_stream, const double &time, const UIndex &square_id) const;
-            int deformFromFile(const std::string &file_name);
+            void initilize_netCDF_file(const std::string file_name);
+            void append_netCDF_file(const std::string &file_name, const int &current_step, const float &time);
     };
 }

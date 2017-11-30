@@ -209,8 +209,10 @@ int main (int argc, char **argv) {
     // --------------------------------------------------------------------------------//
     // --==                         File I/O Preparation                          --== //
     // --------------------------------------------------------------------------------//
-    out_file.open(out_file_name.c_str());
-    out_file << header.c_str();
+    //out_file.open(out_file_name.c_str());
+    //out_file << header.c_str();
+	std::cout << "Initilizing netCDF output...";
+    this_world.initilize_netCDF_file(out_file_name);
     std::cout.precision(output_num_digits_for_percent);
 
 
@@ -233,9 +235,10 @@ int main (int argc, char **argv) {
 
         // Write the current state to file
         if (current_step%save_step == 0) {
-            for (it=ids.begin(); it!=ids.end(); ++it) {
-                this_world.write_square_ascii(out_file, time, *it);
-            }
+            //for (it=ids.begin(); it!=ids.end(); ++it) {
+            //    this_world.write_square_ascii(out_file, time, *it);
+            //}
+        	this_world.append_netCDF_file(out_file_name, current_step, time);
         }
 
         // Move the squares
