@@ -52,11 +52,14 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = N
     z_min =  np.inf
     z_max = -np.inf
     z_avs = []
-    for levelstep in level_ncVar:
-        z_min = min(levelstep.min(), z_min)
-        z_max = max(levelstep.max(), z_max)
-        z_avs.append(levelstep.mean())
+    for i, levelstep in enumerate(level_ncVar):
+        masked_data = np.ma.masked_where(height_ncVar[i] == 0.0000, levelstep)  
+        z_min = min(masked_data.min(), z_min)
+        z_max = max(masked_data.max(), z_max)
+        z_avs.append(masked_data.mean())
+    
     print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
+    #TODO: check for simulation that wraps around int date line.
     lon_min,lon_max = lons.min(), lons.max()
     lat_min,lat_max = lats.min(), lats.max()
     mean_lat = lats.mean()
@@ -73,12 +76,11 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = N
     fig = plt.figure()
     
     if not doBasemap:
-#        ax = fig.add_subplot(111)
+        ax = fig.add_subplot(111)
         plt.xlim(lon_min, lon_max)
         plt.ylim(lat_min, lat_max)
 #        ax.get_xaxis().get_major_formatter().set_useOffset(False)
 #        ax.get_yaxis().get_major_formatter().set_useOffset(False)
-        ax = fig.add_subplot(111)
     else:
         m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
                 llcrnrlon=lon_min, urcrnrlon=lon_max, lat_0=mean_lat, lon_0=mean_lon, resolution='h')
@@ -86,7 +88,8 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = N
         m.drawparallels(np.linspace(lat_min,lat_max,num=5.0),labels=[1,0,0,0], linewidth=0)
         m.drawcoastlines(linewidth=0.5)
         m.ax = fig.add_subplot(111)
-
+        ax = m.ax
+    
     # Colorbar
     cmap = plt.get_cmap('Blues_r')
     landcolor = 'orange'#'black'#'#FFFFCC'
@@ -100,13 +103,12 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = N
     framelabelfont = mfont.FontProperties(style='normal', variant='normal', size=14)
     plt.figtext(0.95, 0.7, r'water altitude $[m]$', rotation='vertical', fontproperties=framelabelfont)
     
-    
     # Increment the time from T_MIN
     TIME = T_MIN
 
     surface = None
     with writer.saving(fig, save_file, DPI):
-        for index in range(20):#range(int(N_STEP)):
+        for index in range(int(N_STEP)):
             # Get the subset of data corresponding to current time
             this_level  = level_ncVar[index]
             this_height = height_ncVar[index]
@@ -133,6 +135,7 @@ def make_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = N
             
 
 # --------------------------------------------------------------------------------
+# This functionality is now present in make_animation
 def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax = None):
     # Get ranges
     print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
@@ -225,22 +228,38 @@ def make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_fi
 
 
 def make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file):
-    # Get ranges
-    print("min, max, av, std: ", sim_data['z'].min(), sim_data['z'].max(), sim_data['z'].mean(), sim_data['z'].std())
-    #TODO: check for simulation that wraps around int date line.
-    lon_min,lon_max = sim_data['lon'].min(),sim_data['lon'].max()
-    lat_min,lat_max = sim_data['lat'].min(),sim_data['lat'].max()
-    z_min,z_max = sim_data['z'].min(),sim_data['z'].max()
+        #sim_data is expected to be a netcdf dataset 
 
-    centralloc = ((lon_min+lon_max)/2, (lat_min+lat_max)/2)
+    # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays
+    times = np.array(sim_data.variables['time'])
+    lons = np.array(sim_data.variables['longitude'])
+    lats = np.array(sim_data.variables['latitude'])
     
-    # Split the data up into arrays for each time step
-    split_data = np.split(sim_data, np.unique(sim_data['time']).shape[0])
+    # But keep the data from each time step in netCDF variable form, and slice into it as needed
+    level_ncVar = sim_data.variables['level']
+    height_ncVar = sim_data.variables['height']
+    alt_ncVar = sim_data.variables['altitude']
+    
+    # Get ranges
+    z_min =  np.inf
+    z_max = -np.inf
+    z_avs = []
+    for i, levelstep in enumerate(level_ncVar):
+        masked_data = np.ma.masked_where(height_ncVar[i] == 0.0000, levelstep)  
+        z_min = min(masked_data.min(), z_min)
+        z_max = max(masked_data.max(), z_max)
+        z_avs.append(masked_data.mean())
+    
+    print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
+    #TODO: check for simulation that wraps around int date line.
+    lon_min,lon_max = lons.min(), lons.max()
+    lat_min,lat_max = lats.min(), lats.max()
+    mean_lat = lats.mean()
+    mean_lon = lons.mean()
 
     # Initialize movie writing stuff
     FFMpegWriter = manimation.writers['ffmpeg']
-    metadata = dict(title='TsunamiSquares', artist='Matplotlib',
-            comment='Animation')
+    metadata = dict(title='TsunamiSquares', artist='Matplotlib', comment='Animation')
     writer = FFMpegWriter(fps=FPS, metadata=metadata, bitrate=1000)
 
     # Initialize the frame and axes
@@ -250,52 +269,45 @@ def make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP
     plt.ylim(z_min, z_max)
     ax.get_xaxis().get_major_formatter().set_useOffset(False)
     ax.get_yaxis().get_major_formatter().set_useOffset(False)
-    
     divider = make_axes_locatable(ax)
+    
     # Increment the time from T_MIN
     TIME = T_MIN
-
-    first_step = sim_data[ sim_data['time'] == T_MIN ]
-    Nrows = len(np.unique(first_step['lat']))
-    midlat = np.unique(first_step['lat'])[int(Nrows/2)]
+    
+    
+    midlat_index = int(len(lats)/2)
         
-    # Make array of distances from centralloc
+    # Make array of distances from mean lat/lon
     dist_array = []
     geod = geo(6371000, 0)
-    for cell in first_step[ first_step['lat'] == midlat ]:
-        distance = geod.Inverse(cell['lat'], cell['lon'], centralloc[1], centralloc[0])['s12']
+    for lon in lons:
+        distance = geod.Inverse(lats[midlat_index], lon, mean_lat, mean_lon)['s12']
         dist_array.append(abs(distance))
     dist_array = np.array(dist_array)
 
     sim_plot = ax.plot([], [], 'b')[0]
     analytic_plot = ax.plot([], [], 'r')[0]
+    
     with writer.saving(fig, save_file, DPI):
         for index in range(int(N_STEP)):
             # Get the subset of data corresponding to current time
-            this_step = split_data[index]
-            this_step = this_step[this_step['lat'] == midlat]
-            time = this_step['time'][0]
-            
-            print("step: "+str(index)+"  time: "+str(time))
-            assert len(this_step) > 0
-
-            X = this_step['lon']
-            Z = this_step['z']
-            ALT = this_step['alt']
+            this_level  = level_ncVar[index]
+            time   = times[index]
+            print("step: {}  time: {}".format(index, time))
             
             analytic_Z = []
             for dist in dist_array:
-                analytic_Z.append(analyticGauss(dist, TIME, 10, 5000, 1000))
+                analytic_Z.append(analyticGauss(dist, time, 10, 5000, 1000))
+            
             # Plot the cross section for this time step
-            sim_plot.set_data(X, Z)
-            analytic_plot.set_data(X, analytic_Z)
+            sim_plot.set_data(lons, this_level[midlat_index])
+            analytic_plot.set_data(lons, analytic_Z)
+            
             # Text box with the time
             plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time)/60, int(time)%60), bbox={'facecolor':'yellow', 'pad':5})
-            
                 
             writer.grab_frame()
             
-            TIME +=T_STEP
             
 # =============================================================
 def plot_eq_displacements(LLD_FILE, LEVELS, save_file):
@@ -571,16 +583,16 @@ def bathy_topo_map(LLD_FILE, save_file):
 if __name__ == "__main__":
     
 #    MODE = "generate"
-    MODE = "animate"
+#    MODE = "animate"
 #    MODE = "eq_field_plot"
 #    MODE = "eq_field_plot_horiz"
 #    MODE = "plot_bathy"
 #    MODE = "gen_bathyfile_interp"
 #    MODE = "eq_field_eval"
-#    MODE = "verify"
+    MODE = "verify"
     
     
-    SIMFILE = "tsunami_output.nc"    
+    SIMFILE = "tsunami_output_test.nc"    
     
     if MODE == "generate": #read bethymetry file
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====
@@ -626,7 +638,7 @@ if __name__ == "__main__":
         N_STEP = float(T_MAX-T_MIN)/T_STEP
         zminmax = None
 #        zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
-        MAKE_MAP = False
+        MAKE_MAP = True
         # Makes animation on a Basemap plot
 #        make_map_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file, zminmax)
         # Makes animation without any background Basemap
@@ -697,14 +709,16 @@ if __name__ == "__main__":
         save_file = sim_file.split(".")[0]+"_crosssection.mp4"
         # For text files
         #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
-        FPS = 10 #FRAMES PER SECOND
+        sim_data = Dataset(sim_file, 'r', format='NETCDF4')
+        times = np.array(sim_data.variables['time'])
+        
+        FPS = 20 #FRAMES PER SECOND
         DPI = 100
-        T_MAX,T_MIN = sim_data['time'].max(),sim_data['time'].min()
-        T_STEP = np.unique(sim_data['time'])[1] - np.unique(sim_data['time'])[0]
+        T_MIN, T_MAX = times.min(), times.max()
+        T_STEP = times[1] - times[0]
         assert T_STEP > 0
         N_STEP = float(T_MAX-T_MIN)/T_STEP
-        zminmax = None
-#        zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
+        
         make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file)
         
         
