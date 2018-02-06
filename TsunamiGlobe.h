@@ -483,12 +483,12 @@ namespace tsunamisquares {
             
 
             // ======= Main functions =========
-            void indexNeighbors(const int num_nearest);
+            void indexNeighbors();
             void computeNeighbors(void);
             void computeNeighborCoords(void);
             void computeInvalidDirections(void);
             void fillToSeaLevel(void);
-            void moveSquares(const double dt, const bool accel_bool, const int num_nearest, const bool doPlaneFit);
+            void moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit);
             void computeDiffussionFracts(const double dt, const double D);
             void diffuseSquaresSpherical(void);
             void diffuseSquaresSchultz(const double dt, const double D);
@@ -496,7 +496,7 @@ namespace tsunamisquares {
             void applyDiffusion(void);
             Vec<2> getAverageSlopeWard(const UIndex &square_id, const SquareIDSet &square_ids) const;
             Vec<2> fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids);
-            Vec<2> getGradient(const UIndex &square_id, const bool doPlanFit);
+            Vec<2> getGradient(const UIndex &square_id, const bool doPlaneFit);
             void updateAcceleration(const UIndex &square_id, const bool doPlaneFit);
             void deformBottom(const UIndex &square_id, const double &height_change);
             UIndex whichSquare(const Vec<2> &location) const;
@@ -506,7 +506,7 @@ namespace tsunamisquares {
             void calcMaxDepth(void);
             Vec<2> centralLoc(void);
             void calcMinSpacing(void);
-            void calcMaxOverlapError(const int num_nearest);
+            void calcMaxOverlapError();
             bool checkSimHealth(void);
             // ======= Square functions =========
             Vec<2> squareCenter(const UIndex &square_id) const;
@@ -522,7 +522,9 @@ namespace tsunamisquares {
             int deformFromFile(const std::string &file_name);
             int write_file_kml(const std::string &file_name);
             void write_square_ascii(std::ostream &out_stream, const double &time, const UIndex &square_id) const;
-            void initilize_netCDF_file(const std::string file_name);
+            void initilize_netCDF_file(const std::string &file_name);
             void append_netCDF_file(const std::string &file_name, const int &current_step, const float &time);
+            void write_sim_state_netCDF(const std::string &file_name);
+            void read_sim_state_netCDF(const std::string &file_name, const bool &flatten_bool);
     };
 }

@@ -12,6 +12,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.basemap import Basemap
 import matplotlib.font_manager as mfont
 import scipy as sp
+import argparse
 from geographiclib.geodesic import Geodesic as geo
 from netCDF4 import Dataset
 # -------
@@ -55,6 +56,8 @@ def make_grid_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminma
         z_min = min(masked_data.min(), z_min)
         z_max = max(masked_data.max(), z_max)
         z_avs.append(masked_data.mean())
+    
+    z_max = np.max(np.ma.masked_where(height_ncVar[0] == 0.0000, level_ncVar[0]))    
     
     print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
     #TODO: check for simulation that wraps around int date line.
@@ -479,46 +482,64 @@ def bathy_topo_map(LLD_FILE, save_file):
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
     
-#    MODE = "generate"
-#    MODE = "eq_field_eval"
-#    MODE = "eq_field_plot"
-#    MODE = "eq_field_plot_horiz"
-#    MODE = "plot_bathy"
-#    MODE = "animate"
-    MODE = "verify"
+    parser = argparse.ArgumentParser()
     
-    SIMFILE = "ChannelIslands_x5_gauss_output.nc"    
+    parser.add_argument('--generate_bathy', required=False, action='store_true',
+            help="Generate bathymetry file")
+    parser.add_argument('--eq_field_eval', required=False, action='store_true',
+            help="Create uplift initial condition file")
+    parser.add_argument('--eq_field_plot', required=False, action='store_true',
+            help="Plot initial uplift")
+    parser.add_argument('--eq_field_plot_horiz', required=False, action='store_true',
+            help="Plot initial conditions, including horizontal motion")
+    parser.add_argument('--plot_bathy', required=False, action='store_true',
+            help="Plot bathymetry topographic map")
+    
+    
+    parser.add_argument('--animate', required=False, action='store_true',
+            help="Create 2d birds-eye animation of tsunami")
+    parser.add_argument('--animate_map', required=False, action='store_true',
+            help="Create 2d birds-eye map animation of tsunami")
+    parser.add_argument('--verify', required=False, action='store_true',
+            help="Create cross-sectional plot of wave, for verification against gaussian pile initial conditions")
+    parser.add_argument('--sim_file', required=False, type=str, nargs='+',
+            help="Name of simulation file to analyze.")
+    
+    args = parser.parse_args()
+    
+#    SIMFILE = "ChannelIslands_x3_gauss_output.nc"    
+    SIMFILE = "Tohoku_x1_realistic_output.nc"    
      
-    if MODE == "generate":
+    if args.generate_bathy:
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====
         ETOPO1_FILE = "ETOPO1/ETOPO1_Ice_g_gmt4.grd"
-        FACTOR  = 5
+        FACTOR  = 2
         # =================================
-        SAVE_NAME = "bathymetry/ChannelIslands_x5_lld.txt"
-        MIN_LAT = 33.75
-        MAX_LAT = 34.3
-        MIN_LON = -120.2
-        MAX_LON = -119.2
+#        SAVE_NAME = "bathymetry/ChannelIslands_x5_lld.txt"
+#        MIN_LAT = 33.75
+#        MAX_LAT = 34.3
+#        MIN_LON = -120.2
+#        MAX_LON = -119.2
         # =================================
-#        SAVE_NAME = "bathymetry/Tohoku_x1_lld.txt"
-#        MIN_LAT = 34.7
-#        MAX_LAT = 41.6
-#        MIN_LON = 140.1
-#        MAX_LON = 144.5
+        SAVE_NAME = "bathymetry/Tohoku_x2_lld.txt"
+        MIN_LAT = 34.7
+        MAX_LAT = 41.6
+        MIN_LON = 140.1
+        MAX_LON = 144.5
         # =================================
         # --- write grid ------
         lats, lons, bathy = read_ETOPO1.grab_ETOPO1_subset_interpolated(ETOPO1_FILE,min_lat=MIN_LAT,max_lat=MAX_LAT,min_lon=MIN_LON,max_lon=MAX_LON, factor=FACTOR)
         read_ETOPO1.write_grid(SAVE_NAME,lats,lons,bathy)
 
 
-    if MODE == "eq_field_eval":
+    if args.eq_field_eval:
         # =================================
 #        LLD_NAME = "bathymetry/Channel_Islands_largest_subset_lld.txt"
 #        MODEL     = "~/VirtQuake/UCERF3_reindexed/Model/UCERF3_VQmeshed_from_EQSIM_ReIndexed_AseismicCut_0-11_taper_drops0.9.h5"
 #        EVENTS    = "~/VirtQuake/UCERF3_reindexed/VQ_runs/events_UCERF3_ReIndexed_AseismicCut_0-11_taper_drops0-9_50kyr_dyn0-2_greenLimits.h5"
 #        EVID      = 39951
         # =================================
-        LLD_NAME = "bathymetry/Tohoku_x3_lld.txt"
+        LLD_NAME = "bathymetry/Tohoku_x1_lld.txt"
         MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
         EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
         EVID      = 1196
@@ -528,17 +549,17 @@ if __name__ == "__main__":
         system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --model_file {} --event_file {} --uniform_slip 10 --lld_file {} ".format(MODEL, EVENTS, LLD_NAME))
         
 
-    if MODE == "eq_field_plot":
+    if args.eq_field_plot:
         Levels = [-.3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
         plot_eq_displacements("bathymetry/Channel_Islands_largest_subset_lld_dispField_event39951.txt",Levels, "outputs/disp_map.png")
     
     
-    if MODE == "eq_field_plot_horiz":
+    if args.eq_field_plot_horiz:
         EVID = 8
         plot_eq_disps_horiz("fields/Tohoku_lld_dispField_event{}.xyuen".format(EVID), "fields/disp_map_event{}".format(EVID))
         
         
-    if MODE == "plot_bathy":
+    if args.plot_bathy:
         #Levels = [-3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
         #bathy_topo_map("local/Channel_Islands.txt",Levels, "bathy_map.png")
         bathy_file="bathymetry/ChannelIslands_x3_lld.txt"
@@ -546,7 +567,11 @@ if __name__ == "__main__":
         bathy_topo_map(bathy_file, save_file)
 
 
-    if MODE == "animate":
+    if args.animate: 
+        MAKE_MAP = False
+    if args.animate_map:
+        MAKE_MAP = True
+    if args.animate or args.animate_map:
         sim_file = SIMFILE
         save_file = sim_file.split(".")[0]+"_grid.mp4"
         #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
@@ -565,7 +590,7 @@ if __name__ == "__main__":
         make_grid_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax, doBasemap = MAKE_MAP)
         
         
-    if MODE == "verify":
+    if args.verify:
         sim_file = SIMFILE
         save_file = sim_file.split(".")[0]+"_crosssection.mp4"
         # For text files

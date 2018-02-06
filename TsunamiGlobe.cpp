@@ -400,7 +400,7 @@ void tsunamisquares::World::applyDiffusion(void){
 
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
-void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const int num_nearest, const bool doPlaneFit) {
+void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit) {
 
     // Initialize the updated height and velocity to zero. These are the containers
     // used to keep track of the distributed height/velocity from moving squares.
@@ -414,14 +414,12 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
         Geodesic geod(EARTH_MEAN_RADIUS, 0);
 		double ldt;
 		bool   laccel_bool;
-		int    lnum_nearest;
 		bool   ldoPlaneFit;
 
 	#pragma omp critical
 		{
 			ldt          = dt;
 			laccel_bool  = accel_bool;
-			lnum_nearest = num_nearest;
 			ldoPlaneFit  = doPlaneFit;
 		}
 
@@ -1110,7 +1108,7 @@ void tsunamisquares::World::calcMinSpacing() {
 	_min_spacing = minSize*EARTH_MEAN_RADIUS;
 }
 
-void tsunamisquares::World::calcMaxOverlapError(const int num_nearest) {
+void tsunamisquares::World::calcMaxOverlapError() {
 	std::map<UIndex, Square>::const_iterator sit;
     Geodesic geod(EARTH_MEAN_RADIUS, 0);
     double max_overlap_error = 0;
@@ -1130,7 +1128,7 @@ void tsunamisquares::World::calcMaxOverlapError(const int num_nearest) {
 		geod.Direct(sit->second.xy()[1]+_dlat/2, sit->second.xy()[0]+_dlon/2, 90.0, 0.0, lat2, lon2);
 		new_tright = Vec<2>(lon2, lat2);
 
-		distsNneighbors = getNearest_rtree(sit->second.xy(), num_nearest, false);
+		distsNneighbors = getNearest_rtree(sit->second.xy(), 9, false);
 
 		for (dnit=distsNneighbors.begin(); dnit!=distsNneighbors.end(); ++dnit) {
 			std::map<UIndex, Square>::iterator neighbor_it = _squares.find(dnit->second);
@@ -1207,11 +1205,11 @@ tsunamisquares::UIndex tsunamisquares::World::whichSquare(const Vec<2> &location
 }
 
 
-void tsunamisquares::World::indexNeighbors(const int num_nearest) {
+void tsunamisquares::World::indexNeighbors() {
 	computeNeighbors();
 	computeNeighborCoords();
 	computeInvalidDirections();
-	calcMaxOverlapError(num_nearest);
+	calcMaxOverlapError();
 }
 
 void tsunamisquares::World::computeNeighbors(void) {
@@ -1572,7 +1570,7 @@ void tsunamisquares::World::write_square_ascii(std::ostream &out_stream, const d
 }
 
 
-void tsunamisquares::World::initilize_netCDF_file(const std::string file_name){
+void tsunamisquares::World::initilize_netCDF_file(const std::string &file_name){
 	std::map<UIndex, Square>::const_iterator sit;
 	// We are writing 3D data, a NLAT x NLON lat-lon grid, with NSTEPS timesteps of data.
 
@@ -1643,7 +1641,7 @@ void tsunamisquares::World::initilize_netCDF_file(const std::string file_name){
 	lonVar.putVar(lons);
 }
 
-void tsunamisquares::World::append_netCDF_file(const std::string &file_name, const int &current_step, const float &time){
+void tsunamisquares::World::append_netCDF_file(const std::string &file_name, const int &current_step, const float &this_time){
 	std::map<UIndex, Square>::const_iterator sit;
 
 	NcFile dataFile(file_name, NcFile::write);
@@ -1664,7 +1662,7 @@ void tsunamisquares::World::append_netCDF_file(const std::string &file_name, con
 	float alt_out[NLAT][NLON];
 
 	// Populate the data arrays from world data
-	time_out[0] = time;
+	time_out[0] = this_time;
 	for(sit=_squares.begin(); sit!=_squares.end(); sit++){
 		int lat_index = std::floor(sit->first / double(NLON));
 		int lon_index = sit->first % NLON;
@@ -1696,6 +1694,131 @@ void tsunamisquares::World::append_netCDF_file(const std::string &file_name, con
 	heightVar.putVar(startp,countp,height_out);
 	altVar.putVar(startp,countp,alt_out);
 }
+
+void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name){
+	std::map<UIndex, Square>::const_iterator sit;
+	// We are writing 2D data, a NLAT x NLON lat-lon grid
+
+	// Define nlat and nlon from world data
+	int NLAT = num_lats();
+	int NLON = num_lons();
+
+	// For the units attributes.
+	std::string  UNITS = "units";
+	std::string  LENGTH_UNITS = "meters";
+	std::string  VELOCITY_UNITS = "meters/second";
+	std::string  LAT_UNITS = "degrees_north";
+	std::string  LON_UNITS = "degrees_east";
+
+	// We will write latitude and longitude fields.
+	// Populate the data arrays from world data
+	float lats[NLAT],lons[NLON];
+	float level_out[NLAT][NLON];
+	float height_out[NLAT][NLON];
+	float alt_out[NLAT][NLON];
+	float velocity_horiz_out[NLAT][NLON];
+	float velocity_vert_out[NLAT][NLON];
+
+	for(sit=_squares.begin(); sit!=_squares.end(); sit++){
+		int lat_index = floor(sit->first / double(NLON));
+		int lon_index = sit->first % NLON;
+
+		lats[lat_index] = sit->second.xy()[1];
+		lons[lon_index] = sit->second.xy()[0];
+
+		level_out[lat_index][lon_index] = squareLevel(sit->first);
+		height_out[lat_index][lon_index] = sit->second.height();
+		alt_out[lat_index][lon_index] = sit->second.xyz()[2];
+		velocity_horiz_out[lat_index][lon_index] = sit->second.velocity()[0];
+		velocity_vert_out[lat_index][lon_index] = sit->second.velocity()[1];
+	}
+
+
+	// Create the file.
+	NcFile dataFile(file_name, NcFile::replace);
+
+	// Define the dimensions. NetCDF will hand back an ncDim object for
+	// each.
+	NcDim latDim = dataFile.addDim("latitude", NLAT);
+	NcDim lonDim = dataFile.addDim("longitude", NLON);
+
+	// Define the coordinate variables.
+	NcVar latVar = dataFile.addVar("latitude", ncFloat, latDim);
+	NcVar lonVar = dataFile.addVar("longitude", ncFloat, lonDim);
+
+	// Define units attributes for coordinate vars. This attaches a
+	// text attribute to each of the coordinate variables, containing
+	// the units.
+	latVar.putAtt(UNITS, LAT_UNITS);
+	lonVar.putAtt(UNITS, LON_UNITS);
+
+	//Dimension vector for correctly sizing data variables
+	std::vector<NcDim> dimVector;
+	dimVector.push_back(latDim);
+	dimVector.push_back(lonDim);
+
+	// Define the netCDF variables for the data
+	NcVar levelVar = dataFile.addVar("level", ncFloat, dimVector);
+	NcVar heightVar = dataFile.addVar("height", ncFloat, dimVector);
+	NcVar altVar = dataFile.addVar("altitude", ncFloat, dimVector);
+	NcVar velHorizVar = dataFile.addVar("horizontal velocity", ncFloat, dimVector);
+	NcVar velVertVar = dataFile.addVar("vertical velocity", ncFloat, dimVector);
+
+	// Define units attributes for coordinate vars. This attaches a
+	// text attribute to each of the coordinate variables, containing
+	// the units.
+	levelVar.putAtt(UNITS, LENGTH_UNITS);
+	heightVar.putAtt(UNITS, LENGTH_UNITS);
+	altVar.putAtt(UNITS, LENGTH_UNITS);
+	velHorizVar.putAtt(UNITS, VELOCITY_UNITS);
+	velVertVar.putAtt(UNITS, VELOCITY_UNITS);
+
+	// Write the coordinate variable data to the file.
+	latVar.putVar(lats);
+	lonVar.putVar(lons);
+
+	////////////////////////////////////////////////////////////////////////////////////////
+	//NcFile dataFile(file_name, NcFile::write);
+	//long NLAT = dataFile.getDim("latitude").getSize();
+	//long NLON = dataFile.getDim("longitude").getSize();
+	// Get the variables we'll be writing to
+	//NcVar levelVar, heightVar, altVar;
+	//levelVar = dataFile.getVar("level");
+	//heightVar = dataFile.getVar("height");
+	//altVar = dataFile.getVar("altitude");
+
+	std::vector<size_t> startp, countp;
+
+	// Starting index of data to be written.  Arrays at each time step start at [timeStep, 0, 0]
+
+	startp.push_back(0);
+	startp.push_back(0);
+
+	// Size of array to be written.  nlats and nlons in those dims.
+
+	countp.push_back(NLAT);
+	countp.push_back(NLON);
+
+	levelVar.putVar(startp,countp,level_out);
+	heightVar.putVar(startp,countp,height_out);
+	altVar.putVar(startp,countp,alt_out);
+	velHorizVar.putVar(startp,countp,velocity_horiz_out);
+	velVertVar.putVar(startp,countp,velocity_vert_out);
+}
+
+void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, const bool &flatten_bool){
+
+	/* Make 2d interpolation from each input arrays (from netCDF file)
+	 *
+	 * Do rtree overlap between input bounds and this world square rtree to get set of squares that are affected by input file
+	 *
+	 * Loop through concerned squares, set all their values from the 2d interpolations from input
+	 *    Make sure there's an if(!flatten_bool) before setting altitude
+	 */
+
+
+}
+
 
 
 

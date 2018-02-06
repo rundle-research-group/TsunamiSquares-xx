@@ -38,35 +38,12 @@ int main (int argc, char **argv) {
     ///////////          CONSTANTS         ////////////
     // -------------------------------------------------------------------------------- //
     /*  Wilson: Trying a simple input file for these parameters.  Can be improved in the future for readability and
-     *  suseptability to errors
-    const std::string   out_file_name    = "tsunami_output.txt"; // name this relevant
-    const std::string   bathy_file       = "bathymetry/Pacific_900.txt"; // name this relevant
-    //const std::string   kml_file         = "local/Pacific_36.kml";
-    // const std::string   deformation_file = "local/Channel_Islands_test_bump.txt"; // kasey says we dont need this now
-    // until later
-    
-    // Diffusion constant (fit to a reasonable looking sim)
-    double D = 140616.45; //140616.45;
-    // Flattening the bathymetry to a constant depth (negative for below sea level)
-    double new_depth = -100.0;
-    // Bumping up the bottom
-    double bump_height = 50.0;
-    // Number of times to move squares
-    int N_steps = 20; //number of time steps 10 is fine, to see a bit of movement
-    // because boundaries aren't defined very well, we limit the time steps whenever the water hits the walls of things
-    // Updating intervals, etc.
-    int current_step = 0;
-    int update_step = 1;
-    int save_step = 1;
-    double time = 0.0;
-    int output_num_digits_for_percent = 3;
-    */
+     *  suseptability to errors*/
 
     // Ensure we are given the parameter file name
 	assertThrow(argc == 2, "usage: param_file");
 
 	param_file.open(argv[argc-1]);
-
 
 	std::string 				param_name;
 	std::string					value;
@@ -82,24 +59,27 @@ int main (int argc, char **argv) {
     const std::string   kml_file         	= param_values[2];
     const std::string   deformation_file 	= param_values[3];
 
+    // Turn on or off movement of squares, calculating of accelerations, or diffusion
     bool	move_bool						= atof(param_values[4].c_str());
 	bool	accel_bool						= atof(param_values[5].c_str());
 	bool	diffuse_bool					= atof(param_values[6].c_str());
-	// Choose naive cartesian diffusion method or accurate spherical method.
+
+	//number of Ward diffusion sweeps per time step
 	int		ndiffusions						= atof(param_values[7].c_str());
-    // Diffusion constant (fit to a reasonable looking sim)
+    // Diffusion constant for Schultz diffusion
     double 	D 								= atof(param_values[8].c_str()); //140616.45;
+
     // Time step in seconds
     double  dt_param						= atof(param_values[9].c_str());
     // Number of times to move squares
-    int 	N_steps 						= atof(param_values[10].c_str()); //number of time steps 10 is fine, to see a bit of movement
-    // because boundaries aren't defined very well, we limit the time steps whenever the water hits the walls of things
+    int 	N_steps 						= atof(param_values[10].c_str());
     // Updating intervals, etc.
     int 	current_step 					= atof(param_values[11].c_str());
     int 	update_step 					= atof(param_values[12].c_str());
     int 	save_step 						= atof(param_values[13].c_str());
     double 	time 							= atof(param_values[14].c_str());
     int 	output_num_digits_for_percent 	= atof(param_values[15].c_str());
+
     //Boolean to decide whether to flatten the seafloor before running, for testing purposes
     bool	flatten_bool					= atof(param_values[16].c_str());
     // Flattening the bathymetry to a constant depth (negative for below sea level)
@@ -108,12 +88,20 @@ int main (int argc, char **argv) {
 	bool	bump_bool						= atof(param_values[18].c_str());
     // How high the central bump should be
 	double 	bump_height 					= atof(param_values[19].c_str());
+	// Should we use a gaussian pile as initial conditions? (plus pile height and width
 	bool 	gauss_bool	 					= atof(param_values[20].c_str());
 	double  gauss_height 					= atof(param_values[21].c_str());
 	double 	gauss_std	 					= atof(param_values[22].c_str());
-	int		num_nearest						= atof(param_values[23].c_str());
-	bool    doPlaneFit                      = atof(param_values[24].c_str());
-	int     num_threads                     = atof(param_values[25].c_str());
+
+	// Use plane fitting method for calculating accelerations?  If not falls back on simpler seperate x & y linear accel calc
+	bool    doPlaneFit                      = atof(param_values[23].c_str());
+
+	// Number of multiprocessing threads to run the sim on
+	int     num_threads                     = atof(param_values[24].c_str());
+
+	// Write final simulation state out at end?
+	bool    write_sim_state                 = atof(param_values[25].c_str());
+	const std::string   finalstate_file_name= param_values[27];
 
 
 	omp_set_num_threads(num_threads);
@@ -121,7 +109,6 @@ int main (int argc, char **argv) {
     // Header for the simulation output
     const std::string   header = "# time \t lon \t\t lat \t\t water height \t altitude \n";
     
-
     // -------------------------------------------------------------------------------- //
     ///////                Simulation Initialization and Loading                   ///////
     // -------------------------------------------------------------------------------- //
@@ -138,7 +125,7 @@ int main (int argc, char **argv) {
 
     // Index the neighbors by left/right/top etc.
     std::cout << "Indexing neighbors......" << std::endl;
-    this_world.indexNeighbors(num_nearest);
+    this_world.indexNeighbors();
 
     // --------------------------------------------------------------------------------//
     //            Sea Floor Deformation and Initial Conditions                         //
@@ -243,7 +230,7 @@ int main (int argc, char **argv) {
 
         // Move the squares
         if(move_bool) {
-        	this_world.moveSquares(dt, accel_bool, num_nearest, doPlaneFit);
+        	this_world.moveSquares(dt, accel_bool, doPlaneFit);
         }
 
         // Diffuse (smooth) the squares
@@ -262,7 +249,13 @@ int main (int argc, char **argv) {
     for (it=ids.begin(); it!=ids.end(); ++it) {
 		this_world.write_square_ascii(out_file, time, *it);
 	}
+    this_world.append_netCDF_file(out_file_name, current_step, time);
     out_file.close();
+
+
+    if(write_sim_state){
+    	this_world.write_sim_state_netCDF(finalstate_file_name);
+    }
 
 
     // --------------------------------------------------------------------------------//
