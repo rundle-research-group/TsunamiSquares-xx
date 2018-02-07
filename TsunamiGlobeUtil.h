@@ -55,6 +55,8 @@ namespace bgi = boost::geometry::index;
 #include <netcdf>
 using namespace netCDF;
 
+#include "libalglib/interpolation.h"
+using namespace alglib;
 
 #define EARTH_MEAN_RADIUS       6371000.0           // in m
 #define EARTH_EQUATORIAL_RADIUS 6378137.0           // in m

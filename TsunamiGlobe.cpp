@@ -1777,25 +1777,13 @@ void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name)
 	latVar.putVar(lats);
 	lonVar.putVar(lons);
 
-	////////////////////////////////////////////////////////////////////////////////////////
-	//NcFile dataFile(file_name, NcFile::write);
-	//long NLAT = dataFile.getDim("latitude").getSize();
-	//long NLON = dataFile.getDim("longitude").getSize();
-	// Get the variables we'll be writing to
-	//NcVar levelVar, heightVar, altVar;
-	//levelVar = dataFile.getVar("level");
-	//heightVar = dataFile.getVar("height");
-	//altVar = dataFile.getVar("altitude");
 
 	std::vector<size_t> startp, countp;
-
 	// Starting index of data to be written.  Arrays at each time step start at [timeStep, 0, 0]
-
 	startp.push_back(0);
 	startp.push_back(0);
 
 	// Size of array to be written.  nlats and nlons in those dims.
-
 	countp.push_back(NLAT);
 	countp.push_back(NLON);
 
@@ -1808,6 +1796,37 @@ void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name)
 
 void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, const bool &flatten_bool){
 
+	// Read in NetCDF
+	NcFile dataFile(file_name, NcFile::read);
+
+	long NLAT = dataFile.getDim("latitude").getSize();
+	long NLON = dataFile.getDim("longitude").getSize();
+
+	// These will hold our data.
+	float lats_in[NLAT], lons_in[NLON];
+	float height_in[NLAT][NLON];
+	float alt_in[NLAT][NLON];
+	float velocity_horiz_in[NLAT][NLON];
+	float velocity_vert_in[NLAT][NLON];
+
+	// Get the variables
+	NcVar latVar, lonVar;
+	latVar = dataFile.getVar("latitude");
+	lonVar = dataFile.getVar("longitude");
+	latVar.getVar(lats_in);
+	lonVar.getVar(lons_in);
+
+	NcVar heightVar, altVar, velHorizVar, velVertVar;
+	heightVar = dataFile.getVar("height");
+	altVar = dataFile.getVar("altitude");
+	velHorizVar = dataFile.getVar("horizontal velocity");
+	velVertVar = dataFile.getVar("vertical velocity");
+	heightVar.getVar(height_in);
+	altVar.getVar(alt_in);
+	velHorizVar.getVar(velocity_horiz_in);
+	velVertVar.getVar(velocity_vert_in);
+
+
 	/* Make 2d interpolation from each input arrays (from netCDF file)
 	 *
 	 * Do rtree overlap between input bounds and this world square rtree to get set of squares that are affected by input file
@@ -1816,6 +1835,67 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 	 *    Make sure there's an if(!flatten_bool) before setting altitude
 	 */
 
+	// put input data into alglib real_1d_arrays
+	real_1d_array lon_algarr, lat_algarr;
+	lon_algarr.setlength(NLON);
+	lat_algarr.setlength(NLAT);
+	real_1d_array height_algarr, alt_algarr, velHor_algarr, velVert_algarr;
+	height_algarr.setlength(NLON*NLAT);
+	alt_algarr.setlength(NLON*NLAT);
+	velHor_algarr.setlength(NLON*NLAT);
+	velVert_algarr.setlength(NLON*NLAT);
+	for(int j=0; j<NLAT; j++){
+		lat_algarr[j] = lats_in[j];
+		for(int i=0; i<NLON; i++){
+			lon_algarr[i] = lons_in[i];
+			height_algarr[j*NLON+i]  = height_in[j][i];
+			alt_algarr[j*NLON+i]     = alt_in[j][i];
+			velHor_algarr[j*NLON+i]  = velocity_horiz_in[j][i];
+			velVert_algarr[j*NLON+i] = velocity_vert_in[j][i];
+		}
+	}
+
+	// build splines
+	spline2dinterpolant height_spline, alt_spline, velHor_spline, velVert_spline;
+	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, height_algarr,  1, height_spline);
+	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, alt_algarr,     1, alt_spline);
+	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, velHor_algarr,  1, velHor_spline);
+	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, velVert_algarr, 1, velVert_spline);
+
+	//Do rtree grab of all squares that need their initial conditions set
+	point_spheq top_left_in, top_right_in, bottom_right_in, bottom_left_in;
+	float minlon = lons_in[0];
+	float maxlon = lons_in[NLON-1];
+	float minlat = lats_in[0];
+	float maxlat = lats_in[NLAT-1];
+	top_left_in = point_spheq(minlon, maxlat);
+	top_right_in = point_spheq(maxlon, maxlat);
+	bottom_right_in = point_spheq(maxlon, minlat);
+	bottom_left_in = point_spheq(minlon, minlat);
+
+	point_spheq ring_verts[5] = {bottom_left_in, top_left_in, top_right_in, bottom_right_in, bottom_left_in};
+	ring_spheq new_ring;
+	bg::assign_points(new_ring, ring_verts);
+	SquareIDSet intersected_squares;
+	intersected_squares = _square_rtree.getRingIntersects(new_ring);
+
+
+	// for squares in the subset grabbed by rtree search, set values to those from input
+	SquareIDSet::const_iterator sidit;
+	for(sidit=intersected_squares.begin(); sidit !=intersected_squares.end(); sidit++){
+		Square this_square = square(*sidit);
+		float square_lon = this_square.xy()[0];
+		float square_lat = this_square.xy()[1];
+
+		this_square.set_height( spline2dcalc(height_spline, square_lon, square_lat) );
+		this_square.set_velocity( Vec<2>(spline2dcalc(velHor_spline, square_lon, square_lat), spline2dcalc(velVert_spline, square_lon, square_lat) ) );
+		if(!flatten_bool){
+			LatLonDepth new_lld = this_square.lld();
+			new_lld.set_altitude( spline2dcalc(alt_spline, square_lon, square_lat) );
+			this_square.set_lld(new_lld);
+		}
+
+	}
 
 }
 

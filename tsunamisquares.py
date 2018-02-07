@@ -128,7 +128,7 @@ def make_grid_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminma
                 surface.set_data(masked_data)
                 
             # Text box with the time
-            plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time)/60, int(time)%60), bbox={'facecolor':'yellow', 'pad':5})
+            plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time/60), int(time%60)), bbox={'facecolor':'yellow', 'pad':5})
             
             writer.grab_frame()
             
@@ -508,7 +508,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
 #    SIMFILE = "ChannelIslands_x3_gauss_output.nc"    
-    SIMFILE = "Tohoku_x1_realistic_output.nc"    
+#    SIMFILE = "Tohoku_x1_realistic_output.nc"   
+    SIMFILE = args.sim_file[0]
      
     if args.generate_bathy:
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====

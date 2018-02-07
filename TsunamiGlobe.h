@@ -363,7 +363,7 @@ namespace tsunamisquares {
 				_data._lon = lld.lon();
 				_data._alt = lld.altitude();
 				_pos = Vec<3>(_data._lon, _data._lat, _data._alt);
-				// TEMPORARY FIX TO LET (X,Y,Z) = (LON,LAT,ALT)
+				// TEMPORARY FIX TO LET (X,Y,Z) = (LON,LAT,ALT), we'll later get rid of lld entirely
 				//_pos = Vec<3>(lld.lon(), lld.lat(), lld.altitude());
 			};
 

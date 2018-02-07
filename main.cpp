@@ -99,9 +99,14 @@ int main (int argc, char **argv) {
 	// Number of multiprocessing threads to run the sim on
 	int     num_threads                     = atof(param_values[24].c_str());
 
-	// Write final simulation state out at end?
-	bool    write_sim_state                 = atof(param_values[25].c_str());
-	const std::string   finalstate_file_name= param_values[27];
+	// Write out final simulation state out at end?
+	bool  write_sim_state                   = atof(param_values[25].c_str());
+	const std::string   finalstate_file_name= param_values[26];
+
+	// Read in initial sim state at beginning?
+	bool  read_sim_state                    = atof(param_values[27].c_str());
+	const std::string initialstate_file_name= param_values[28];
+
 
 
 	omp_set_num_threads(num_threads);
@@ -135,7 +140,8 @@ int main (int argc, char **argv) {
     std::cout << "Filling with water..." << std::endl;
 	this_world.fillToSeaLevel();
 
-	//
+	// TODO: make a switch between these options
+	// Either gaussian pile, central bump, or deform from file
 	if(gauss_bool){
 		std::cout << "Accumulating gaussian pile... " << std::endl;
 		this_world.gaussianPile(gauss_height, gauss_std);
@@ -152,8 +158,11 @@ int main (int argc, char **argv) {
 	    }
 	}
 
-
-
+	// Read in initial conditions from sim state file
+	if(read_sim_state){
+		std::cout << "\nReading initial conditions from saved state file" << std::endl;
+		this_world.read_sim_state_netCDF(initialstate_file_name, flatten_bool);
+	}
 
 
 	//Populate wet rtree
