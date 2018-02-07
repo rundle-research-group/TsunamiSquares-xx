@@ -47,65 +47,66 @@ int main (int argc, char **argv) {
 
 	std::string 				param_name;
 	std::string					value;
-	std::vector<std::string>	param_values;
+	std::map<std::string, std::string>	param_values;
 
 	while ( param_file >> param_name >> value )
 	{
-	  param_values.push_back(value);
+		param_values[param_name]= value;
+
 	}
 
-    const std::string   out_file_name    	= param_values[0];
-    const std::string   bathy_file       	= param_values[1];
-    const std::string   kml_file         	= param_values[2];
-    const std::string   deformation_file 	= param_values[3];
+    const std::string   out_file_name    	= param_values["out_file_name"];
+    const std::string   bathy_file       	= param_values["bathy_file"];
+    const std::string   kml_file         	= param_values["kml_file"];
+    const std::string   deformation_file 	= param_values["deformation_file"];
 
     // Turn on or off movement of squares, calculating of accelerations, or diffusion
-    bool	move_bool						= atof(param_values[4].c_str());
-	bool	accel_bool						= atof(param_values[5].c_str());
-	bool	diffuse_bool					= atof(param_values[6].c_str());
+    bool	move_bool						= atof(param_values["move_bool"].c_str());
+	bool	accel_bool						= atof(param_values["accel_bool"].c_str());
+	bool	diffuse_bool					= atof(param_values["diffuse_bool"].c_str());
 
 	//number of Ward diffusion sweeps per time step
-	int		ndiffusions						= atof(param_values[7].c_str());
+	int		ndiffusions						= atof(param_values["ndiffusions"].c_str());
     // Diffusion constant for Schultz diffusion
-    double 	D 								= atof(param_values[8].c_str()); //140616.45;
+    double 	D 								= atof(param_values["D"].c_str()); //140616.45;
 
     // Time step in seconds
-    double  dt_param						= atof(param_values[9].c_str());
+    double  dt_param						= atof(param_values["dt"].c_str());
     // Number of times to move squares
-    int 	N_steps 						= atof(param_values[10].c_str());
+    int 	N_steps 						= atof(param_values["N_steps"].c_str());
     // Updating intervals, etc.
-    int 	current_step 					= atof(param_values[11].c_str());
-    int 	update_step 					= atof(param_values[12].c_str());
-    int 	save_step 						= atof(param_values[13].c_str());
-    double 	time 							= atof(param_values[14].c_str());
-    int 	output_num_digits_for_percent 	= atof(param_values[15].c_str());
+    int 	current_step 					= atof(param_values["current_step"].c_str());
+    int 	update_step 					= atof(param_values["update_step"].c_str());
+    int 	save_step 						= atof(param_values["save_step"].c_str());
+    double 	time 							= atof(param_values["time"].c_str());
+    int 	output_num_digits_for_percent 	= atof(param_values["output_num_digits_for_percent"].c_str());
 
     //Boolean to decide whether to flatten the seafloor before running, for testing purposes
-    bool	flatten_bool					= atof(param_values[16].c_str());
+    bool	flatten_bool					= atof(param_values["flatten_bool"].c_str());
     // Flattening the bathymetry to a constant depth (negative for below sea level)
-	double 	flat_depth 						= atof(param_values[17].c_str());
+	double 	flat_depth 						= atof(param_values["flat_depth"].c_str());
     //Boolean to decide whether to use bump instead deformation file, for testing purposes
-	bool	bump_bool						= atof(param_values[18].c_str());
+	bool	bump_bool						= atof(param_values["bump_bool"].c_str());
     // How high the central bump should be
-	double 	bump_height 					= atof(param_values[19].c_str());
+	double 	bump_height 					= atof(param_values["bump_height"].c_str());
 	// Should we use a gaussian pile as initial conditions? (plus pile height and width
-	bool 	gauss_bool	 					= atof(param_values[20].c_str());
-	double  gauss_height 					= atof(param_values[21].c_str());
-	double 	gauss_std	 					= atof(param_values[22].c_str());
+	bool 	gauss_bool	 					= atof(param_values["gauss_bool"].c_str());
+	double  gauss_height 					= atof(param_values["gauss_height"].c_str());
+	double 	gauss_std	 					= atof(param_values["gauss_std"].c_str());
 
 	// Use plane fitting method for calculating accelerations?  If not falls back on simpler seperate x & y linear accel calc
-	bool    doPlaneFit                      = atof(param_values[23].c_str());
+	bool    doPlaneFit                      = atof(param_values["doPlaneFit"].c_str());
 
 	// Number of multiprocessing threads to run the sim on
-	int     num_threads                     = atof(param_values[24].c_str());
+	int     num_threads                     = atof(param_values["num_threads"].c_str());
 
 	// Write out final simulation state out at end?
-	bool  write_sim_state                   = atof(param_values[25].c_str());
-	const std::string   finalstate_file_name= param_values[26];
+	bool  write_sim_state                   = atof(param_values["write_sim_state"].c_str());
+	const std::string   finalstate_file_name= param_values["finalstate_file_name"];
 
 	// Read in initial sim state at beginning?
-	bool  read_sim_state                    = atof(param_values[27].c_str());
-	const std::string initialstate_file_name= param_values[28];
+	bool  read_sim_state                    = atof(param_values["read_sim_state"].c_str());
+	const std::string initialstate_file_name= param_values["initialstate_file_name"];
 
 
 
