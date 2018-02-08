@@ -1887,7 +1887,10 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 		float square_lon = this_square.xy()[0];
 		float square_lat = this_square.xy()[1];
 
-		this_square.set_height( spline2dcalc(height_spline, square_lon, square_lat) );
+		float heighttoset = spline2dcalc(height_spline, square_lon, square_lat);
+		std::cout << "square " << *sidit << ", heighttoset " << heighttoset << std::endl;
+
+		this_square.set_height( heighttoset );
 		this_square.set_velocity( Vec<2>(spline2dcalc(velHor_spline, square_lon, square_lat), spline2dcalc(velVert_spline, square_lon, square_lat) ) );
 		if(!flatten_bool){
 			LatLonDepth new_lld = this_square.lld();

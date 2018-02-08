@@ -81,6 +81,8 @@ int main (int argc, char **argv) {
     double 	time 							= atof(param_values["time"].c_str());
     int 	output_num_digits_for_percent 	= atof(param_values["output_num_digits_for_percent"].c_str());
 
+
+    std::string initial_conditions			= param_values["initial_conditions"];
     //Boolean to decide whether to flatten the seafloor before running, for testing purposes
     bool	flatten_bool					= atof(param_values["flatten_bool"].c_str());
     // Flattening the bathymetry to a constant depth (negative for below sea level)
@@ -111,9 +113,6 @@ int main (int argc, char **argv) {
 
 
 	omp_set_num_threads(num_threads);
-
-    // Header for the simulation output
-    const std::string   header = "# time \t lon \t\t lat \t\t water height \t altitude \n";
     
     // -------------------------------------------------------------------------------- //
     ///////                Simulation Initialization and Loading                   ///////
@@ -143,31 +142,29 @@ int main (int argc, char **argv) {
 
 	// TODO: make a switch between these options
 	// Either gaussian pile, central bump, or deform from file
-	if(gauss_bool){
-		std::cout << "Accumulating gaussian pile... " << std::endl;
-		this_world.gaussianPile(gauss_height, gauss_std);
-	}else{
-	    std::cout << "Deforming the bottom... " << std::endl;
-	    if(bump_bool){
-	    	//   == DEFORM A LAND BUMP =======
-	    	std::cout << "\t Deforming central bump " << std::endl;
-	    	this_world.bumpCenter(bump_height);
-	    }else{
-	    	//   == DEFORM FROM FILE ==
-	    	std::cout << "\t Deforming from file" << std::endl;
-			this_world.deformFromFile(deformation_file);
-	    }
+	std::map<std::string, int> initial_conds;
+	initial_conds["eq"] = 1;
+	initial_conds["bump"] = 2;
+	initial_conds["gauss"]= 3;
+	initial_conds["saved"]= 4;
+	switch(initial_conds[initial_conditions]){
+		case 1: std::cout << "Deforming from file" << std::endl;
+			       this_world.deformFromFile(deformation_file);
+			       break;
+		case 2: std::cout << "Deforming central bump " << std::endl;
+    			this_world.bumpCenter(bump_height);
+    			break;
+		case 3: std::cout << "Accumulating gaussian pile... " << std::endl;
+				this_world.gaussianPile(gauss_height, gauss_std);
+				break;
+		case 4: std::cout << "Reading initial conditions from saved state file" << std::endl;
+				this_world.read_sim_state_netCDF(initialstate_file_name, flatten_bool);
+				break;
+		default: std::cout << "Initial conditions didn't match any known.  Exiting" << std::endl;
+				 return 0;
+
 	}
 
-	// Read in initial conditions from sim state file
-	if(read_sim_state){
-		std::cout << "\nReading initial conditions from saved state file" << std::endl;
-		this_world.read_sim_state_netCDF(initialstate_file_name, flatten_bool);
-	}
-
-
-	//Populate wet rtree
-	//this_world.populate_wet_rtree();
 
 
     // --------------------------------------------------------------------------------//
@@ -206,6 +203,8 @@ int main (int argc, char **argv) {
     // --------------------------------------------------------------------------------//
     // --==                         File I/O Preparation                          --== //
     // --------------------------------------------------------------------------------//
+    // Header for the simulation output
+    //const std::string   header = "# time \t lon \t\t lat \t\t water height \t altitude \n";
     //out_file.open(out_file_name.c_str());
     //out_file << header.c_str();
 	std::cout << "Initilizing netCDF output...";
