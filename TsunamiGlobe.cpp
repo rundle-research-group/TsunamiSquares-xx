@@ -1883,21 +1883,20 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 	// for squares in the subset grabbed by rtree search, set values to those from input
 	SquareIDSet::const_iterator sidit;
 	for(sidit=intersected_squares.begin(); sidit !=intersected_squares.end(); sidit++){
-		Square this_square = square(*sidit);
-		float square_lon = this_square.xy()[0];
-		float square_lat = this_square.xy()[1];
+		std::map<UIndex, Square>::iterator sit = _squares.find(*sidit);
+		float square_lon = sit->second.xy()[0];
+		float square_lat = sit->second.xy()[1];
 
 		float heighttoset = spline2dcalc(height_spline, square_lon, square_lat);
-		std::cout << "square " << *sidit << ", heighttoset " << heighttoset << std::endl;
 
-		this_square.set_height( heighttoset );
-		this_square.set_velocity( Vec<2>(spline2dcalc(velHor_spline, square_lon, square_lat), spline2dcalc(velVert_spline, square_lon, square_lat) ) );
+		sit->second.set_height( heighttoset );
+
+		sit->second.set_velocity( Vec<2>( spline2dcalc(velHor_spline, square_lon, square_lat), spline2dcalc(velVert_spline, square_lon, square_lat) ) );
 		if(!flatten_bool){
-			LatLonDepth new_lld = this_square.lld();
+			LatLonDepth new_lld = sit->second.lld();
 			new_lld.set_altitude( spline2dcalc(alt_spline, square_lon, square_lat) );
-			this_square.set_lld(new_lld);
+			sit->second.set_lld(new_lld);
 		}
-
 	}
 
 }

@@ -140,8 +140,7 @@ int main (int argc, char **argv) {
     std::cout << "Filling with water..." << std::endl;
 	this_world.fillToSeaLevel();
 
-	// TODO: make a switch between these options
-	// Either gaussian pile, central bump, or deform from file
+	// Either deform from file, central bump, gaussian pile, or load previous sim state
 	std::map<std::string, int> initial_conds;
 	initial_conds["eq"] = 1;
 	initial_conds["bump"] = 2;
@@ -249,17 +248,17 @@ int main (int argc, char **argv) {
         }
 
 
-
         // Increment time
         time += dt;
         current_step += 1;
     }
     // Write the final state to the file
-    for (it=ids.begin(); it!=ids.end(); ++it) {
-		this_world.write_square_ascii(out_file, time, *it);
-	}
+    //for (it=ids.begin(); it!=ids.end(); ++it) {
+	//	this_world.write_square_ascii(out_file, time, *it);
+	//}
+    //out_file.close();
     this_world.append_netCDF_file(out_file_name, current_step, time);
-    out_file.close();
+
 
 
     if(write_sim_state){
