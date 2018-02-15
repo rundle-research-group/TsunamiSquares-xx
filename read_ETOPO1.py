@@ -63,6 +63,7 @@ def grab_ETOPO1_subset_interpolated(file_name, min_lat, max_lat, min_lon, max_lo
     
     # Extend the bounds to add a buffer, ensures that interpolation has enough data on the boundaries
     # TODO: better algorithm here, the min/max position of 0.98 vs 1.02 changes in different regions
+    # TODO: need to handle crossing the int date line
     min_lat_buff = min_lat-3
     max_lat_buff = max_lat+3
     min_lon_buff = min_lon-3
@@ -80,14 +81,14 @@ def grab_ETOPO1_subset_interpolated(file_name, min_lat, max_lat, min_lon, max_lo
     lats = lats[minLat:maxLat]
     bathy = ETOPO1.variables["z"][minLat:maxLat,minLon:maxLon]
     
-    print("== Selected {} points ({}x{}) from {}".format(bathy.size,bathy.shape[1],bathy.shape[0],file_name))   
+    print("== Selected {} points ({}x{}) from {}".format(bathy.size, bathy.shape[1], bathy.shape[0], file_name))   
     print("---- Lats: {} to {},   Lons: {} to {}".format(min_lat, max_lat, min_lon, max_lon))
     
     # Flatten everything into 1D arrays
     bathy_flat = bathy_buff.flatten()
     lons_buff_flat = lons_buff.flatten()
     lats_buff_flat = lats_buff.flatten()
-    points = zip(lons_buff_flat,lats_buff_flat)
+    points = list(zip(lons_buff_flat,lats_buff_flat))
     
     # Create the grid for interpolation
     grid_lon_vals = np.linspace(min_lon, max_lon, num=int(len(lons)*factor))
@@ -95,6 +96,8 @@ def grab_ETOPO1_subset_interpolated(file_name, min_lat, max_lat, min_lon, max_lo
     grid_lons, grid_lats = np.meshgrid(grid_lon_vals, grid_lat_vals)
 
     print("grid_lons shape = ", grid_lons.shape)
+
+    print("points length = ", len(points))    
     
     if debug:
         print("buffered")

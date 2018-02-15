@@ -484,37 +484,34 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--generate_bathy', required=False, action='store_true',
-            help="Generate bathymetry file")
-    parser.add_argument('--eq_field_eval', required=False, action='store_true',
-            help="Create uplift initial condition file")
-    parser.add_argument('--eq_field_plot', required=False, action='store_true',
-            help="Plot initial uplift")
-    parser.add_argument('--eq_field_plot_horiz', required=False, action='store_true',
-            help="Plot initial conditions, including horizontal motion")
-    parser.add_argument('--plot_bathy', required=False, action='store_true',
-            help="Plot bathymetry topographic map")
+    parser.add_argument('mode', action='store', choices=['generate_bathy', 'eq_field_eval', 'eq_field_plot', 'eq_field_plot_horiz', 
+                                         'plot_bathy', 'animate', 'animate_map', 'verifiy'],
+            help="Select mode for script")
+            
+            
+    parser.add_argument('--resolution', type=int, required=False,
+            help="Resolution interpolation multiplier for NOAA topography")
+    parser.add_argument('--lon_bounds', type=float, nargs=2, required=False,
+            help="Minimum and maximum longitude for bathymetry")            
+    parser.add_argument('--lat_bounds', type=float, nargs=2, required=False,
+            help="Minimum and maximum latitude for bathymetry")
+    parser.add_argument('--save_name', required=False,
+            help="File name for bathymetry")
+            
+    parser.add_argument('--zminmax', type=float, nargs=2, required=False,
+            help="Bounds for water height color bar")
     
-    
-    parser.add_argument('--animate', required=False, action='store_true',
-            help="Create 2d birds-eye animation of tsunami")
-    parser.add_argument('--animate_map', required=False, action='store_true',
-            help="Create 2d birds-eye map animation of tsunami")
-    parser.add_argument('--verify', required=False, action='store_true',
-            help="Create cross-sectional plot of wave, for verification against gaussian pile initial conditions")
     parser.add_argument('--sim_file', required=False, type=str, nargs='+',
             help="Name of simulation file to analyze.")
     
     args = parser.parse_args()
     
 #    SIMFILE = "ChannelIslands_x3_gauss_output.nc"    
-#    SIMFILE = "Tohoku_x1_realistic_output.nc"   
-    SIMFILE = args.sim_file[0]
+#    SIMFILE = "Tohoku_x1_realistic_output.nc"
      
-    if args.generate_bathy:
-        # ====== PARSE ETOPO1 FILE, SAVE SUBSET, EVALUATE EVENT FIELD AT THE LAT/LON, SAVE =====
+    if args.mode == 'generate_bathy':
+        # ====== PARSE ETOPO1 FILE, SAVE SUBSET =====
         ETOPO1_FILE = "ETOPO1/ETOPO1_Ice_g_gmt4.grd"
-        FACTOR  = 2
         # =================================
 #        SAVE_NAME = "bathymetry/ChannelIslands_x5_lld.txt"
 #        MIN_LAT = 33.75
@@ -522,18 +519,26 @@ if __name__ == "__main__":
 #        MIN_LON = -120.2
 #        MAX_LON = -119.2
         # =================================
-        SAVE_NAME = "bathymetry/Tohoku_x2_lld.txt"
-        MIN_LAT = 34.7
-        MAX_LAT = 41.6
-        MIN_LON = 140.1
-        MAX_LON = 144.5
         # =================================
+#        SAVE_NAME = "bathymetry/Tohoku_x2_lld.txt"
+#        MIN_LAT = 34.7
+#        MAX_LAT = 41.6
+#        MIN_LON = 140.1
+#        MAX_LON = 144.5
+        # =================================
+        SAVE_NAME = args.save_name
+        FACTOR  = args.resolution
+        
+        MIN_LAT = args.lat_bounds[0]
+        MAX_LAT = args.lat_bounds[1]
+        MIN_LON = args.lon_bounds[0]
+        MAX_LON = args.lon_bounds[1]
+
         # --- write grid ------
         lats, lons, bathy = read_ETOPO1.grab_ETOPO1_subset_interpolated(ETOPO1_FILE,min_lat=MIN_LAT,max_lat=MAX_LAT,min_lon=MIN_LON,max_lon=MAX_LON, factor=FACTOR)
         read_ETOPO1.write_grid(SAVE_NAME,lats,lons,bathy)
 
-
-    if args.eq_field_eval:
+    if args.mode == 'eq_field_eval':
         # =================================
 #        LLD_NAME = "bathymetry/Channel_Islands_largest_subset_lld.txt"
 #        MODEL     = "~/VirtQuake/UCERF3_reindexed/Model/UCERF3_VQmeshed_from_EQSIM_ReIndexed_AseismicCut_0-11_taper_drops0.9.h5"
@@ -550,17 +555,17 @@ if __name__ == "__main__":
         system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --model_file {} --event_file {} --uniform_slip 10 --lld_file {} ".format(MODEL, EVENTS, LLD_NAME))
         
 
-    if args.eq_field_plot:
+    if args.mode == 'eq_field_plot':
         Levels = [-.3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
         plot_eq_displacements("bathymetry/Channel_Islands_largest_subset_lld_dispField_event39951.txt",Levels, "outputs/disp_map.png")
     
     
-    if args.eq_field_plot_horiz:
+    if args.mode == 'eq_field_plot_horiz':
         EVID = 8
         plot_eq_disps_horiz("fields/Tohoku_lld_dispField_event{}.xyuen".format(EVID), "fields/disp_map_event{}".format(EVID))
         
         
-    if args.plot_bathy:
+    if args.mode == 'plot_bathy':
         #Levels = [-3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
         #bathy_topo_map("local/Channel_Islands.txt",Levels, "bathy_map.png")
         bathy_file="bathymetry/ChannelIslands_x3_lld.txt"
@@ -568,12 +573,12 @@ if __name__ == "__main__":
         bathy_topo_map(bathy_file, save_file)
 
 
-    if args.animate: 
+    if args.mode == 'animate': 
         MAKE_MAP = False
-    if args.animate_map:
+    if args.mode == 'animate_map':
         MAKE_MAP = True
-    if args.animate or args.animate_map:
-        sim_file = SIMFILE
+    if args.mode == 'animate' or args.mode == 'animate_map':
+        sim_file = args.sim_file[0]
         save_file = sim_file.split(".")[0]+"_grid.mp4"
         #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
         sim_data = Dataset(sim_file, 'r', format='NETCDF4')
@@ -584,15 +589,18 @@ if __name__ == "__main__":
         T_STEP = times[1] - times[0]
         assert T_STEP > 0
         N_STEP = float(T_MAX-T_MIN)/T_STEP
-        zminmax = None
-#        zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
+        if args.zminmax:
+            zminmax = args.zminmax
+        else:
+            zminmax = None
+        #zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
         MAKE_MAP = False
         # Makes animation
         make_grid_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax, doBasemap = MAKE_MAP)
         
         
-    if args.verify:
-        sim_file = SIMFILE
+    if args.mode == 'verify':
+        sim_file = args.sim_file[0]
         save_file = sim_file.split(".")[0]+"_crosssection.mp4"
         # For text files
         #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])

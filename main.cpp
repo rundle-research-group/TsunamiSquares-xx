@@ -18,8 +18,9 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-#include "TsunamiGlobe.h"
 #include <time.h>
+
+#include "TsunamiGlobe.h"
 
 #define assertThrow(COND, ERR_MSG) assert(COND);
 
@@ -110,6 +111,8 @@ int main (int argc, char **argv) {
 	bool  read_sim_state                    = atof(param_values["read_sim_state"].c_str());
 	const std::string initialstate_file_name= param_values["initialstate_file_name"];
 
+	// Check for nans and infs each time step and break and print diagnostic if found
+	bool    check_sim_health                = atof(param_values["check_sim_health"].c_str());
 
 
 	omp_set_num_threads(num_threads);
@@ -225,8 +228,10 @@ int main (int argc, char **argv) {
             std::cout << std::flush;
         }
         // Check sim health, exit if there are NaNs or Infs floating around
-        //isHealthy = this_world.checkSimHealth();
-        //if(!isHealthy) break;
+        if(check_sim_health){
+        	isHealthy = this_world.checkSimHealth();
+        	if(!isHealthy) break;
+        }
 
         // Write the current state to file
         if (current_step%save_step == 0) {

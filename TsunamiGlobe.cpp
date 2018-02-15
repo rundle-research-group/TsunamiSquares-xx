@@ -19,6 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 #include "TsunamiGlobe.h"
+
 #include <cassert>
 #include <numeric>
 
@@ -502,8 +503,8 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				//distsNneighbors = getNearest_rtree(new_center, lnum_nearest, false);
 				SquareIDSet neighbor_ids = lsit->second.get_valid_neighbors();
 				distsNneighbors.insert(std::make_pair(0.0, lsit->first));
-				for(SquareIDSet::iterator sidsit = neighbor_ids.begin(); sidsit != neighbor_ids.end(); sidsit++){
-					distsNneighbors.insert(std::make_pair(1.0, *sidsit));
+				for(SquareIDSet::iterator sidit = neighbor_ids.begin(); sidit != neighbor_ids.end(); sidit++){
+					distsNneighbors.insert(std::make_pair(1.0, *sidit));
 				}
 
 
@@ -626,12 +627,22 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
         sit->second.set_height(sit->second.updated_height());
 
+        Vec<2> veltoset = sit->second.updated_momentum()/(sit->second.mass());
+
+
+        // Here we're trying to catch bad velocities that sometimes arrise.  This is a bandaid, and the root cause is still unknown.
+        if(isnan(veltoset[0]) || isinf(veltoset[0]) || isnan(veltoset[1]) || isinf(veltoset[1])){
+        	veltoset = Vec<2>(0, 0);
+        }
+
+        // Don't set any velcity or height to tiny amounts of water
         if(sit->second.height() > SMALL_HEIGHT){
-        	sit->second.set_velocity( sit->second.updated_momentum()/(sit->second.mass()) );
+        	sit->second.set_velocity( veltoset );
         }else{
             sit->second.set_velocity( Vec<2>(0.0, 0.0));
             sit->second.set_height(0);
         }
+
     }
     
 }
@@ -671,6 +682,13 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bo
         // frictional acceleration from fluid particle interaction
         friction_accel = square_it->second.velocity()*(-1.0)*square_it->second.velocity().mag()*(square_it->second.friction())/(fmax(square_it->second.height(), 1.0));
         //friction_accel = Vec<2>(0.0,0.0);
+
+        if(isnan(friction_accel[0]) || isinf(friction_accel[0])){
+        	friction_accel[0] = 0.0;
+        }
+     	if(isnan(friction_accel[1]) || isinf(friction_accel[1]) ){
+     		friction_accel[1] = 0.0;
+        }
 
         new_accel = grav_accel + friction_accel;
 
@@ -1584,6 +1602,7 @@ void tsunamisquares::World::initilize_netCDF_file(const std::string &file_name){
 	std::string  LENGTH_UNITS = "meters";
 	std::string  LAT_UNITS = "degrees_north";
 	std::string  LON_UNITS = "degrees_east";
+	std::string  VELOCITY_UNITS = "meters/second";
 
 	// We will write latitude and longitude fields.
 	float lats[NLAT],lons[NLON];
@@ -1628,6 +1647,8 @@ void tsunamisquares::World::initilize_netCDF_file(const std::string &file_name){
 	NcVar levelVar = dataFile.addVar("level", ncFloat, dimVector);
 	NcVar heightVar = dataFile.addVar("height", ncFloat, dimVector);
 	NcVar altVar = dataFile.addVar("altitude", ncFloat, dimVector);
+	NcVar velHorVar = dataFile.addVar("horizonal velocity", ncFloat, dimVector);
+	NcVar velVertVar = dataFile.addVar("vertical velocity", ncFloat, dimVector);
 
 	// Define units attributes for coordinate vars. This attaches a
 	// text attribute to each of the coordinate variables, containing
@@ -1635,6 +1656,8 @@ void tsunamisquares::World::initilize_netCDF_file(const std::string &file_name){
 	levelVar.putAtt(UNITS, LENGTH_UNITS);
 	heightVar.putAtt(UNITS, LENGTH_UNITS);
 	altVar.putAtt(UNITS, LENGTH_UNITS);
+	velHorVar.putAtt(UNITS, VELOCITY_UNITS);
+	velVertVar.putAtt(UNITS, VELOCITY_UNITS);
 
 	// Write the coordinate variable data to the file.
 	latVar.putVar(lats);
@@ -1650,16 +1673,19 @@ void tsunamisquares::World::append_netCDF_file(const std::string &file_name, con
 	long NLON = dataFile.getDim("longitude").getSize();
 
 	// Get the variables we'll be writing to
-	NcVar timeVar, levelVar, heightVar, altVar;
-	timeVar = dataFile.getVar("time");
-	levelVar = dataFile.getVar("level");
-	heightVar = dataFile.getVar("height");
-	altVar = dataFile.getVar("altitude");
+	NcVar timeVar = dataFile.getVar("time");
+	NcVar levelVar = dataFile.getVar("level");
+	NcVar heightVar = dataFile.getVar("height");
+	NcVar altVar = dataFile.getVar("altitude");
+	NcVar velHorVar = dataFile.getVar("horizonal velocity");
+	NcVar velVertVar = dataFile.getVar("vertical velocity");
 
 	float time_out[1];
 	float level_out[NLAT][NLON];
 	float height_out[NLAT][NLON];
 	float alt_out[NLAT][NLON];
+	float velHor_out[NLAT][NLON];
+	float velVert_out[NLAT][NLON];
 
 	// Populate the data arrays from world data
 	time_out[0] = this_time;
@@ -1670,6 +1696,8 @@ void tsunamisquares::World::append_netCDF_file(const std::string &file_name, con
 		level_out[lat_index][lon_index] = squareLevel(sit->first);
 		height_out[lat_index][lon_index] = sit->second.height();
 		alt_out[lat_index][lon_index] = sit->second.xyz()[2];
+		velHor_out[lat_index][lon_index] = sit->second.velocity()[0];
+		velVert_out[lat_index][lon_index] = sit->second.velocity()[1];
 	}
 
 
@@ -1693,6 +1721,8 @@ void tsunamisquares::World::append_netCDF_file(const std::string &file_name, con
 	levelVar.putVar(startp,countp,level_out);
 	heightVar.putVar(startp,countp,height_out);
 	altVar.putVar(startp,countp,alt_out);
+	velHorVar.putVar(startp,countp,velHor_out);
+	velVertVar.putVar(startp,countp,velVert_out);
 }
 
 void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name){
@@ -1804,6 +1834,7 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 
 	// These will hold our data.
 	float lats_in[NLAT], lons_in[NLON];
+	float level_in[NLAT][NLON];
 	float height_in[NLAT][NLON];
 	float alt_in[NLAT][NLON];
 	float velocity_horiz_in[NLAT][NLON];
@@ -1816,11 +1847,13 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 	latVar.getVar(lats_in);
 	lonVar.getVar(lons_in);
 
-	NcVar heightVar, altVar, velHorizVar, velVertVar;
+	NcVar levelVar, heightVar, altVar, velHorizVar, velVertVar;
+	levelVar = dataFile.getVar("level");
 	heightVar = dataFile.getVar("height");
 	altVar = dataFile.getVar("altitude");
 	velHorizVar = dataFile.getVar("horizontal velocity");
 	velVertVar = dataFile.getVar("vertical velocity");
+	levelVar.getVar(level_in);
 	heightVar.getVar(height_in);
 	altVar.getVar(alt_in);
 	velHorizVar.getVar(velocity_horiz_in);
@@ -1839,7 +1872,8 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 	real_1d_array lon_algarr, lat_algarr;
 	lon_algarr.setlength(NLON);
 	lat_algarr.setlength(NLAT);
-	real_1d_array height_algarr, alt_algarr, velHor_algarr, velVert_algarr;
+	real_1d_array level_algarr, height_algarr, alt_algarr, velHor_algarr, velVert_algarr;
+	level_algarr.setlength(NLON*NLAT);
 	height_algarr.setlength(NLON*NLAT);
 	alt_algarr.setlength(NLON*NLAT);
 	velHor_algarr.setlength(NLON*NLAT);
@@ -1848,6 +1882,7 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 		lat_algarr[j] = lats_in[j];
 		for(int i=0; i<NLON; i++){
 			lon_algarr[i] = lons_in[i];
+			level_algarr[j*NLON+i]  = level_in[j][i];
 			height_algarr[j*NLON+i]  = height_in[j][i];
 			alt_algarr[j*NLON+i]     = alt_in[j][i];
 			velHor_algarr[j*NLON+i]  = velocity_horiz_in[j][i];
@@ -1856,7 +1891,8 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 	}
 
 	// build splines
-	spline2dinterpolant height_spline, alt_spline, velHor_spline, velVert_spline;
+	spline2dinterpolant level_spline, height_spline, alt_spline, velHor_spline, velVert_spline;
+	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, level_algarr,  1, level_spline);
 	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, height_algarr,  1, height_spline);
 	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, alt_algarr,     1, alt_spline);
 	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, velHor_algarr,  1, velHor_spline);
@@ -1887,16 +1923,24 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 		float square_lon = sit->second.xy()[0];
 		float square_lat = sit->second.xy()[1];
 
-		float heighttoset = spline2dcalc(height_spline, square_lon, square_lat);
 
-		sit->second.set_height( heighttoset );
-
-		sit->second.set_velocity( Vec<2>( spline2dcalc(velHor_spline, square_lon, square_lat), spline2dcalc(velVert_spline, square_lon, square_lat) ) );
 		if(!flatten_bool){
 			LatLonDepth new_lld = sit->second.lld();
 			new_lld.set_altitude( spline2dcalc(alt_spline, square_lon, square_lat) );
 			sit->second.set_lld(new_lld);
 		}
+
+		// Most important thing for hazard estimate is level of water, not how deep the column is.  So get appropriate height from level.
+		float heighttoset = spline2dcalc(level_spline, square_lon, square_lat) - spline2dcalc(alt_spline, square_lon, square_lat);
+
+		// If the amount of water is tiny, best to not give the square any at all.  This avoids artifically wetting dry land with miniscule amounts.
+		//  Only seafloor below a certain depth will recieve any water, so don't try to pick up a simulation that has already inundated land.
+		if(heighttoset > 1e-2 && sit->second.xyz()[2] < -1e2){
+			sit->second.set_height( heighttoset );
+			sit->second.set_velocity( Vec<2>( spline2dcalc(velHor_spline, square_lon, square_lat), spline2dcalc(velVert_spline, square_lon, square_lat) ) );
+		}
+
+
 	}
 
 }
