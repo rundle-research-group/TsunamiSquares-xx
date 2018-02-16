@@ -18,7 +18,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-#include "TsunamiGlobe.h"
+#include "TsunamiObjects.h"
 
 #include <cassert>
 #include <numeric>
@@ -79,7 +79,7 @@ void tsunamisquares::World::computeDiffussionFracts(const double dt, const doubl
 	Geodesic geod(EARTH_MEAN_RADIUS, 0);
 
 
-	// Only used for T0DO: diffuseSquaresSpherical, which isn't our current method for diffusion.
+	// Only used for diffuseSquaresSpherical, which isn't our current method for diffusion.
 	//  This model is based on the idea that all square will distribute their water to nearby squares each time step,
 	//  but it hasn't been shown to actually work for smoothing purposes.
 
@@ -691,6 +691,10 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bo
         }
 
         new_accel = grav_accel + friction_accel;
+
+        if(isnan(new_accel[0]) || isinf(new_accel[0])){
+        	int temp = 1;
+        }
 
         // Check for invalid directions of motion (eg at edges)
         if(square_it->second.invalid_directions()[0] && new_accel[0]<0.0) new_accel[0] = 0.0;

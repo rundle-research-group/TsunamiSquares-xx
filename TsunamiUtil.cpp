@@ -18,7 +18,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-#include "TsunamiGlobeUtil.h"
+#include "TsunamiUtil.h"
 
 std::ostream &tsunamisquares::operator<<(std::ostream &os, const LatLonDepth &pt) {
     os << "[" << pt.lat() << "," << pt.lon();

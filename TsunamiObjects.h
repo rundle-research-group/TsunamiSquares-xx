@@ -25,7 +25,7 @@
 #include <map>
 #include <stdlib.h>
 
-#include "TsunamiGlobeUtil.h"
+#include "TsunamiUtil.h"
 
 namespace tsunamisquares {
     typedef unsigned int UIndex;

@@ -20,7 +20,7 @@
 
 #include <time.h>
 
-#include "TsunamiGlobe.h"
+#include "TsunamiObjects.h"
 
 #define assertThrow(COND, ERR_MSG) assert(COND);
 
