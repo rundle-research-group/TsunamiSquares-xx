@@ -31,6 +31,7 @@
 
 // Set the height for all elements equal to the depth of the bathymetry below the center of the square.
 // Result is squares with just enough water so that the water sits at sea level.
+// TODO: set _tot_volume after loading in simulation state file
 void tsunamisquares::World::fillToSeaLevel(void) {
     std::map<UIndex, Square>::iterator     sit;
 
@@ -306,7 +307,7 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 			lsit->second.set_updated_momentum( lsit->second.momentum() );
 			// Only diffuse if there's water present
 			if (lsit->second.height() > SMALL_HEIGHT) {
-				// Compute the height-dependent factor for this square
+				// Compute the height-dependent factor for this square, constants taken from Ward
 				fact = 0.15*fmin(0.02+0.125*(lsit->second.height()/6000), 0.5);  //Ward: depth dependent smoothing might have to adjust
 																//max_depth()
 				//simulate multiple applications of smoothing sweeps, instead of actually looping multiple times
@@ -318,16 +319,24 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 					nit = _squares.find(*id_it);
 
 					if(nit->second.height() > SMALL_HEIGHT){
-						//if(fmin(sit->second.height(), nit->second.height()) >= 200){
+						//if(fmin(lsit->second.height(), nit->second.height()) >= 200){
 							//conserve momentum
 							dmom = (nit->second.momentum() - lsit->second.momentum())*fact;
 							local_momentum_changes[nit->first] -= dmom;
 							local_momentum_changes[lsit->first] += dmom;
 						//}else{//TODO: smooth velocities without using momentum as a proxy for shallow water
-						//	//don't conserve momentum
-						//	dvel = (nit->second.velocity() - sit->second.velocity())*fact;
-						//	nit->second.set_updated_momentum(nit->second.velocity() - dvel);
-						//	sit->second.set_updated_momentum(sit->second.velocity() + dvel);
+							//  Smoothing velocities directly for shallow water
+							//  Of course, we actually update momenta, so we need to translate through that
+							//  *doesn't conserve momentum
+							//dvel = (nit->second.velocity() - lsit->second.velocity())*fact;
+
+							//Non-omp verion nit->second.set_updated_momentum(nit->second.velocity() - dvel);
+							//Non-omp version lsit->second.set_updated_momentum(lsit->second.velocity() + dvel);
+
+							// These masses are from before the diffusion step, so the momentum transfered here will result in velocity changes that aren't
+							// quite right.  Let's try it, if it proves pathological we'll readdress it.
+							//local_momentum_changes[nit->first] -= dvel*nit->second.mass();
+							//local_momentum_changes[lsit->first] += dvel*lsit->second.mass();
 						//}
 
 						height_change = fact*(squareLevel(nit->first) - squareLevel(lsit->first));
@@ -391,6 +400,7 @@ void tsunamisquares::World::applyDiffusion(void){
 			sit->second.set_velocity(Vec<2>(0.0,0.0));
 			sit->second.set_height(0.0);
 		}
+
 	}
 	overdrawn_volume = abs(overdrawn_volume);
 	// Scale all the water to conserve mass after we fixed negative volumes
@@ -691,10 +701,6 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bo
         }
 
         new_accel = grav_accel + friction_accel;
-
-        if(isnan(new_accel[0]) || isinf(new_accel[0])){
-        	int temp = 1;
-        }
 
         // Check for invalid directions of motion (eg at edges)
         if(square_it->second.invalid_directions()[0] && new_accel[0]<0.0) new_accel[0] = 0.0;
