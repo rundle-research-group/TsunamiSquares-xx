@@ -324,20 +324,20 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 							dmom = (nit->second.momentum() - lsit->second.momentum())*fact;
 							local_momentum_changes[nit->first] -= dmom;
 							local_momentum_changes[lsit->first] += dmom;
-						//}else{//TODO: smooth velocities without using momentum as a proxy for shallow water
+						/*}else{//TODO: smooth velocities without using momentum as a proxy for shallow water
 							//  Smoothing velocities directly for shallow water
 							//  Of course, we actually update momenta, so we need to translate through that
 							//  *doesn't conserve momentum
-							//dvel = (nit->second.velocity() - lsit->second.velocity())*fact;
+							dvel = (nit->second.velocity() - lsit->second.velocity())*fact;
 
 							//Non-omp verion nit->second.set_updated_momentum(nit->second.velocity() - dvel);
 							//Non-omp version lsit->second.set_updated_momentum(lsit->second.velocity() + dvel);
 
 							// These masses are from before the diffusion step, so the momentum transfered here will result in velocity changes that aren't
 							// quite right.  Let's try it, if it proves pathological we'll readdress it.
-							//local_momentum_changes[nit->first] -= dvel*nit->second.mass();
-							//local_momentum_changes[lsit->first] += dvel*lsit->second.mass();
-						//}
+							local_momentum_changes[nit->first] -= dvel*nit->second.mass();
+							local_momentum_changes[lsit->first] += dvel*lsit->second.mass();
+						}*/
 
 						height_change = fact*(squareLevel(nit->first) - squareLevel(lsit->first));
 						// Make sure there's water enough to give (or take) as calculated.
@@ -459,6 +459,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
 			current_pos = squareCenter(lsit->first);
 			current_velo = lsit->second.velocity();
+
 			if(laccel_bool){
 				current_accel = lsit->second.accel();
 			}else{
