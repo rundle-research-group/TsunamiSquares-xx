@@ -415,7 +415,6 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
     // Initialize the updated height and velocity to zero. These are the containers
     // used to keep track of the distributed height/velocity from moving squares.
-    /* <(^_^<) Happy Coder says: We're good up through this line!*/
 
     #pragma omp parallel
     {

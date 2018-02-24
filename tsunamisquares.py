@@ -3,7 +3,7 @@
 import sys
 import numpy as np
 import matplotlib
-matplotlib.use("Agg")
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import matplotlib.colors as mcolor
 import matplotlib.animation as manimation
@@ -15,203 +15,195 @@ import scipy as sp
 import argparse
 from geographiclib.geodesic import Geodesic as geo
 from netCDF4 import Dataset
-# -------
-#import quakelib
-from os import system
+import os
 import read_ETOPO1
-
-"""
-Tsunami Squares output files are in the following columns:
-
-TIME (secs) |  LON (dec. degrees)  |  LAT (dec. deg.)  |  WATER HEIGHT (meters)  |  BATHY. DEPTH (meters)
-  
-In the code below: X = LON, Y = LAT, Z = WATER HEIGHT, ALT = BATHYMETRY DEPTH
-
-Water height and bathymetry depth are given in units of meters relative to global mean sea level.
-If a square sits on a beach at 5m above sea level and has 4m of water on it, then Z=9m and ALT=5m.
-
-"""
-
-VQ_DIR = "~/VirtQuake/"
+#import quakelib
 
 # --------------------------------------------------------------------------------
-def make_grid_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax = None, doBasemap = False):    
-    #sim_data is expected to be a netcdf dataset 
-    # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays
-    times = np.array(sim_data.variables['time'])
-    lons = np.array(sim_data.variables['longitude'])
-    lats = np.array(sim_data.variables['latitude'])
-    
-    # But keep the data from each time step in netCDF variable form, and slice into it as needed
-    level_ncVar = sim_data.variables['level']
-    height_ncVar = sim_data.variables['height']
-    alt_ncVar = sim_data.variables['altitude']
-    
-    # Get ranges
-    z_min =  np.inf
-    z_max = -np.inf
-    z_avs = []
-    for i, levelstep in enumerate(level_ncVar):
-        masked_data = np.ma.masked_where(height_ncVar[i] == 0.0000, levelstep)  
-        z_min = min(masked_data.min(), z_min)
-        z_max = max(masked_data.max(), z_max)
-        z_avs.append(masked_data.mean())
-    
-    z_max = np.max(np.ma.masked_where(height_ncVar[0] == 0.0000, level_ncVar[0]))    
-    
-    print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
-    #TODO: check for simulation that wraps around int date line.
-    lon_min,lon_max = lons.min(), lons.max()
-    lat_min,lat_max = lats.min(), lats.max()
-    mean_lat = lats.mean()
-    mean_lon = lons.mean()    
-    if(zminmax != None): z_min,z_max = zminmax
-    
 
-    # Initialize movie writing stuff
-    FFMpegWriter = manimation.writers['ffmpeg']
-    metadata = dict(title='TsunamiSquares', artist='Matplotlib', comment='Animation')
-    writer = FFMpegWriter(fps=FPS, metadata=metadata, bitrate=1000)
-
-    # Initialize the frame and axes
-    fig = plt.figure()
+class sim_output:
+    def __init__(self, sim_file_path):
+        self.save_file_prefix = os.path.splitext(sim_file_path)[0]
+        #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
+        self.sim_data = Dataset(sim_file_path, 'r', format='NETCDF4')
     
-    if not doBasemap:
+    
+    def make_grid_animation(self, FPS, DPI, zminmax=None, doBasemap=False):
+        
+        save_file = self.save_file_prefix+"_grid.mp4"
+        
+        #sim_data is expected to be a netcdf dataset 
+        # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays    
+        times = np.array(self.sim_data.variables['time'])
+        lons = np.array(self.sim_data.variables['longitude'])
+        lats = np.array(self.sim_data.variables['latitude'])
+        
+        # But keep the data from each time step in netCDF variable form, and slice into it as needed
+        level_ncVar = self.sim_data.variables['level']
+        height_ncVar = self.sim_data.variables['height']
+        alt_ncVar = self.sim_data.variables['altitude']
+        
+        # Get ranges
+        N_STEP = len(times)
+        z_min =  np.inf
+        z_max = -np.inf
+        z_avs = []
+        for i, levelstep in enumerate(level_ncVar):
+            masked_data = np.ma.masked_where(height_ncVar[i] == 0.0000, levelstep)  
+            z_min = min(masked_data.min(), z_min)
+            z_max = max(masked_data.max(), z_max)
+            z_avs.append(masked_data.mean())
+        
+        z_max = np.max(np.ma.masked_where(height_ncVar[0] == 0.0000, level_ncVar[0]))    
+        
+        print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
+        #TODO: check for simulation that wraps around int date line.
+        lon_min,lon_max = lons.min(), lons.max()
+        lat_min,lat_max = lats.min(), lats.max()
+        mean_lat = lats.mean()
+        mean_lon = lons.mean()    
+        if(zminmax != None): z_min,z_max = zminmax
+    
+        # Initialize movie writing stuff
+        FFMpegWriter = manimation.writers['ffmpeg']
+        metadata = dict(title='TsunamiSquares', artist='Matplotlib', comment='Animation')
+        writer = FFMpegWriter(fps=FPS, metadata=metadata, bitrate=1000)
+    
+        # Initialize the frame and axes
+        fig = plt.figure()
+        
+        if not doBasemap:
+            ax = fig.add_subplot(111)
+            plt.xlim(lon_min, lon_max)
+            plt.ylim(lat_min, lat_max)
+    #        ax.get_xaxis().get_major_formatter().set_useOffset(False)
+    #        ax.get_yaxis().get_major_formatter().set_useOffset(False)
+        else:
+            m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
+                    llcrnrlon=lon_min, urcrnrlon=lon_max, lat_0=mean_lat, lon_0=mean_lon, resolution='h')
+            m.drawmeridians(np.linspace(lon_min,lon_max,num=5.0),labels=[0,0,0,1], linewidth=0)
+            m.drawparallels(np.linspace(lat_min,lat_max,num=5.0),labels=[1,0,0,0], linewidth=0)
+            m.drawcoastlines(linewidth=0.5)
+            m.ax = fig.add_subplot(111)
+            ax = m.ax
+        
+        # Colorbar
+        cmap = plt.get_cmap('Blues_r')
+        landcolor = 'orange'#'black'#'#FFFFCC'
+        cmap.set_bad(landcolor, 1.0)
+        
+        norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
+        divider = make_axes_locatable(ax)
+        cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
+        
+        cb = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norm)
+        framelabelfont = mfont.FontProperties(style='normal', variant='normal', size=14)
+        plt.figtext(0.95, 0.7, r'water altitude $[m]$', rotation='vertical', fontproperties=framelabelfont)
+    
+        surface = None
+        with writer.saving(fig, save_file, DPI):
+            for index in range(int(N_STEP)):
+                # Get the subset of data corresponding to current time
+                this_level  = level_ncVar[index]
+                this_height = height_ncVar[index]
+                this_alt    = alt_ncVar[index]
+                time   = times[index]
+                
+                # Masked array via conditional, don't color the land unless it has water on it
+                masked_data = np.ma.masked_where(this_height == 0.0000, this_level)            
+                
+                print("step: {}  time: {}".format(index, time))
+    
+                # Plot the surface for this time step
+                if surface is None:
+                    ax.imshow(masked_data, cmap=cmap,origin='lower', norm=norm, extent=[lon_min,lon_max,lat_max,lat_min], interpolation='none')
+                else:
+                    surface.set_data(masked_data)
+                    
+                # Text box with the time
+                plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time/60), int(time%60)), bbox={'facecolor':'yellow', 'pad':5})
+                
+                writer.grab_frame()
+    
+    
+    def make_crosssection_animation(self, FPS, DPI):
+        
+        save_file = self.save_file_prefix+"_crosssection.mp4"
+        
+        #sim_data is expected to be a netcdf dataset 
+        # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays
+        times = np.array(self.sim_data.variables['time'])
+        lons = np.array(self.sim_data.variables['longitude'])
+        lats = np.array(self.sim_data.variables['latitude'])
+        
+        # But keep the data from each time step in netCDF variable form, and slice into it as needed
+        level_ncVar = self.sim_data.variables['level']
+        height_ncVar = self.sim_data.variables['height']
+        alt_ncVar = self.sim_data.variables['altitude']
+        
+        # Get ranges
+        N_STEP = len(times)
+        z_min =  np.inf
+        z_max = -np.inf
+        z_avs = []
+        for i, levelstep in enumerate(level_ncVar):
+            masked_data = np.ma.masked_where(height_ncVar[i] == 0.0000, levelstep)  
+            z_min = min(masked_data.min(), z_min)
+            z_max = max(masked_data.max(), z_max)
+            z_avs.append(masked_data.mean())
+        
+        print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
+        #TODO: check for simulation that wraps around int date line.
+        lon_min,lon_max = lons.min(), lons.max()
+        lat_min,lat_max = lats.min(), lats.max()
+        mean_lat = lats.mean()
+        mean_lon = lons.mean()
+    
+        # Initialize movie writing stuff
+        FFMpegWriter = manimation.writers['ffmpeg']
+        metadata = dict(title='TsunamiSquares', artist='Matplotlib', comment='Animation')
+        writer = FFMpegWriter(fps=FPS, metadata=metadata, bitrate=1000)
+    
+        # Initialize the frame and axes
+        fig = plt.figure()
         ax = fig.add_subplot(111)
         plt.xlim(lon_min, lon_max)
-        plt.ylim(lat_min, lat_max)
-#        ax.get_xaxis().get_major_formatter().set_useOffset(False)
-#        ax.get_yaxis().get_major_formatter().set_useOffset(False)
-    else:
-        m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
-                llcrnrlon=lon_min, urcrnrlon=lon_max, lat_0=mean_lat, lon_0=mean_lon, resolution='h')
-        m.drawmeridians(np.linspace(lon_min,lon_max,num=5.0),labels=[0,0,0,1], linewidth=0)
-        m.drawparallels(np.linspace(lat_min,lat_max,num=5.0),labels=[1,0,0,0], linewidth=0)
-        m.drawcoastlines(linewidth=0.5)
-        m.ax = fig.add_subplot(111)
-        ax = m.ax
-    
-    # Colorbar
-    cmap = plt.get_cmap('Blues_r')
-    landcolor = 'orange'#'black'#'#FFFFCC'
-    cmap.set_bad(landcolor, 1.0)
-    
-    norm = mcolor.Normalize(vmin=z_min, vmax=z_max)
-    divider = make_axes_locatable(ax)
-    cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
-    
-    cb = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norm)
-    framelabelfont = mfont.FontProperties(style='normal', variant='normal', size=14)
-    plt.figtext(0.95, 0.7, r'water altitude $[m]$', rotation='vertical', fontproperties=framelabelfont)
-    
-    # Increment the time from T_MIN
-    TIME = T_MIN
-
-    surface = None
-    with writer.saving(fig, save_file, DPI):
-        for index in range(int(N_STEP)):
-            # Get the subset of data corresponding to current time
-            this_level  = level_ncVar[index]
-            this_height = height_ncVar[index]
-            this_alt    = alt_ncVar[index]
-            time   = times[index]
-            
-            # Masked array via conditional, don't color the land unless it has water on it
-            masked_data = np.ma.masked_where(this_height == 0.0000, this_level)            
-            
-            print("step: {}  time: {}".format(index, time))
-
-            # Plot the surface for this time step
-            if surface is None:
-                ax.imshow(masked_data, cmap=cmap,origin='lower', norm=norm, extent=[lon_min,lon_max,lat_max,lat_min], interpolation='none')
-            else:
-                surface.set_data(masked_data)
-                
-            # Text box with the time
-            plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time/60), int(time%60)), bbox={'facecolor':'yellow', 'pad':5})
-            
-            writer.grab_frame()
-            
-            TIME +=T_STEP
-
-
-def make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file):
-    #sim_data is expected to be a netcdf dataset 
-    # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays
-    times = np.array(sim_data.variables['time'])
-    lons = np.array(sim_data.variables['longitude'])
-    lats = np.array(sim_data.variables['latitude'])
-    
-    # But keep the data from each time step in netCDF variable form, and slice into it as needed
-    level_ncVar = sim_data.variables['level']
-    height_ncVar = sim_data.variables['height']
-    alt_ncVar = sim_data.variables['altitude']
-    
-    # Get ranges
-    z_min =  np.inf
-    z_max = -np.inf
-    z_avs = []
-    for i, levelstep in enumerate(level_ncVar):
-        masked_data = np.ma.masked_where(height_ncVar[i] == 0.0000, levelstep)  
-        z_min = min(masked_data.min(), z_min)
-        z_max = max(masked_data.max(), z_max)
-        z_avs.append(masked_data.mean())
-    
-    print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
-    #TODO: check for simulation that wraps around int date line.
-    lon_min,lon_max = lons.min(), lons.max()
-    lat_min,lat_max = lats.min(), lats.max()
-    mean_lat = lats.mean()
-    mean_lon = lons.mean()
-
-    # Initialize movie writing stuff
-    FFMpegWriter = manimation.writers['ffmpeg']
-    metadata = dict(title='TsunamiSquares', artist='Matplotlib', comment='Animation')
-    writer = FFMpegWriter(fps=FPS, metadata=metadata, bitrate=1000)
-
-    # Initialize the frame and axes
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    plt.xlim(lon_min, lon_max)
-    plt.ylim(z_min, z_max)
-    ax.get_xaxis().get_major_formatter().set_useOffset(False)
-    ax.get_yaxis().get_major_formatter().set_useOffset(False)
-    divider = make_axes_locatable(ax)
-    
-    # Increment the time from T_MIN
-    TIME = T_MIN
-    
-    
-    midlat_index = int(len(lats)/2)
+        plt.ylim(z_min, z_max)
+        ax.get_xaxis().get_major_formatter().set_useOffset(False)
+        ax.get_yaxis().get_major_formatter().set_useOffset(False)
+        divider = make_axes_locatable(ax)        
         
-    # Make array of distances from mean lat/lon
-    dist_array = []
-    geod = geo(6371000, 0)
-    for lon in lons:
-        distance = geod.Inverse(lats[midlat_index], lon, mean_lat, mean_lon)['s12']
-        dist_array.append(abs(distance))
-    dist_array = np.array(dist_array)
-
-    sim_plot = ax.plot([], [], 'b')[0]
-    analytic_plot = ax.plot([], [], 'r')[0]
+        midlat_index = int(len(lats)/2)
+            
+        # Make array of distances from mean lat/lon
+        dist_array = []
+        geod = geo(6371000, 0)
+        for lon in lons:
+            distance = geod.Inverse(lats[midlat_index], lon, mean_lat, mean_lon)['s12']
+            dist_array.append(abs(distance))
+        dist_array = np.array(dist_array)
     
-    with writer.saving(fig, save_file, DPI):
-        for index in range(int(N_STEP)):
-            time   = times[index]
-            print("step: {}  time: {}".format(index, time))
-            
-            analytic_Z = []
-            for dist in dist_array:
-                analytic_Z.append(analyticGauss(dist, time, 10, 5000, 1000))
-            
-            # Plot the cross section for this time step
-            sim_plot.set_data(lons, level_ncVar[index][midlat_index])
-            analytic_plot.set_data(lons, analytic_Z)
-            
-            # Text box with the time
-            plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time)/60, int(time)%60), bbox={'facecolor':'yellow', 'pad':5})
+        sim_plot = ax.plot([], [], 'b')[0]
+        analytic_plot = ax.plot([], [], 'r')[0]
+        
+        with writer.saving(fig, save_file, DPI):
+            for index in range(int(N_STEP)):
+                time   = times[index]
+                print("step: {}  time: {}".format(index, time))
                 
-            writer.grab_frame()
+                analytic_Z = []
+                for dist in dist_array:
+                    analytic_Z.append(analyticGauss(dist, time, 10, 5000, 1000))
+                
+                # Plot the cross section for this time step
+                sim_plot.set_data(lons, level_ncVar[index][midlat_index])
+                analytic_plot.set_data(lons, analytic_Z)
+                
+                # Text box with the time
+                plt.figtext(0.02, 0.5, 'Time: {:02f}:{:02f}'.format(int(time)/60, int(time)%60), bbox={'facecolor':'yellow', 'pad':5})
+                    
+                writer.grab_frame()
+
 
 
 def analyticGaussIntegrand(k, r, t, Dc, Rc, depth):
@@ -227,7 +219,10 @@ def analyticGauss(r, t, Dc, Rc, depth):
 #    return np.diff(k)[0]*sumd
 
 
-def plot_eq_displacements(LLD_FILE, LEVELS, save_file):
+def plot_eq_displacements(disp_file):
+
+    save_file = os.path.splitext(disp_file)[0] + "_disp_z.png"    
+    
     # Read displacement data
     disp_data = np.genfromtxt(LLD_FILE, dtype=[('lat','f8'),('lon','f8'), ('z','f8')],skip_header=3)
 
@@ -241,6 +236,9 @@ def plot_eq_displacements(LLD_FILE, LEVELS, save_file):
     z_min,z_max = disp_data['z'].min(),disp_data['z'].max()
     z_lim = max(np.abs(z_min),np.abs(z_max))
     cmap = plt.get_cmap('seismic')
+
+    LEVELS = np.concatenate((-1*np.linspace(0.01, z_lim, 6)[::-1], np.linspace(0.01, z_lim, 6)))    
+    
     norm = mcolor.Normalize(vmin=-z_lim, vmax=z_lim)
     interp = 'cubic'
     landcolor = '#FFFFCC'
@@ -287,10 +285,12 @@ def plot_eq_displacements(LLD_FILE, LEVELS, save_file):
     print("Saved to "+save_file)
 
 
-def plot_eq_disps_horiz(disp_file, save_file):
+def plot_eq_disps_horiz(disp_file):
     # Read displacement data
     disp_data = np.genfromtxt(disp_file, dtype=[('lon','f8'), ('lat','f8'), ('z','f8'), ('eU','f8'), ('nV','f8')])
-
+    
+    save_file_prefix = os.path.splitext(disp_file)[0]+"_disp"    
+    
     # Data ranges
     lon_min,lon_max = disp_data['lon'].min(),disp_data['lon'].max()
     lat_min,lat_max = disp_data['lat'].min(),disp_data['lat'].max()
@@ -359,7 +359,7 @@ def plot_eq_disps_horiz(disp_file, save_file):
     # Plot the contours
     m.contourf(X, Y, masked_data, LEVELSz, cmap=cmap, norm=normz, extend='both', zorder=1)
 
-    plt.savefig(save_file+'_z.png',dpi=100)
+    plt.savefig(save_file_prefix+'_z.png',dpi=100)
     
     # Initialize the frame and axes
     fig = plt.figure(1)    
@@ -388,7 +388,7 @@ def plot_eq_disps_horiz(disp_file, save_file):
     # Plot the contours
     m.contourf(X, Y, masked_data, LEVELSe, cmap=cmap, norm=norme, extend='both', zorder=1)
 
-    plt.savefig(save_file+'_e.png',dpi=100)
+    plt.savefig(save_file_prefix+'_e.png',dpi=100)
 
     # Initialize the frame and axes
     fig = plt.figure(2)    
@@ -417,12 +417,15 @@ def plot_eq_disps_horiz(disp_file, save_file):
     # Plot the contours
     m.contourf(X, Y, masked_data, LEVELSn, cmap=cmap, norm=normn, extend='both', zorder=1)
 
-    plt.savefig(save_file+'_n.png',dpi=100)    
+    plt.savefig(save_file_prefix+'_n.png',dpi=100)    
     
     print("Saved to "+save_file)
 
 
-def bathy_topo_map(LLD_FILE, save_file):
+def bathy_topo_map(LLD_FILE):
+    
+    save_file = os.path.splitext(LLD_FILE)[0]+'_bathymap.png'    
+    
     # Read bathymetry/topography data
     data = np.genfromtxt(LLD_FILE, dtype=[('lat','f8'),('lon','f8'), ('z','f8')],skip_header=3)
 
@@ -484,49 +487,75 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('mode', action='store', choices=['generate_bathy', 'eq_field_eval', 'eq_field_plot', 'eq_field_plot_horiz', 
-                                         'plot_bathy', 'animate', 'animate_map', 'verifiy'],
+    # Select mode of opteration
+    parser.add_argument('mode', choices=['generate_bathy', 'plot_bathy', 'eq_field_eval', 'eq_field_plot', 'animate', 'verify'],
             help="Select mode for script")
             
-            
-    parser.add_argument('--resolution', type=int, required=False,
+    # Options for generating bathymetry LLD files
+    parser.add_argument('--resolution', type=int, required=False, default=1,
             help="Resolution interpolation multiplier for NOAA topography")
     parser.add_argument('--lon_bounds', type=float, nargs=2, required=False,
             help="Minimum and maximum longitude for bathymetry")            
     parser.add_argument('--lat_bounds', type=float, nargs=2, required=False,
             help="Minimum and maximum latitude for bathymetry")
-    parser.add_argument('--save_name', required=False,
+    parser.add_argument('--bathy_save_name', required=False,
             help="File name for bathymetry")
-            
+    
+    # Options for generating EQ surface displacement fields and plotting bathymetry 
+    parser.add_argument('--lld_file', required=False,
+            help="Path of bathymetry file")
+    parser.add_argument('--vq_model_file', required=False,
+            help="Path to VQ fault model file")            
+    parser.add_argument('--vq_event_file', required=False,
+            help="Path to VQ events file")
+    parser.add_argument('--event_id', type=int, required=False,
+            help="Event ID for VQ simulated earthquake")
+    
+    # Options for plotting eq displacement fields
+    parser.add_argument('--field_file', required=False,
+            help="Path of surface displacement file") 
+    parser.add_argument('--plot_horizontal', action="store_true", required=False,
+            help="Whether to plot the horizontal displacements in addition to vertical") 
+    
+    # Options for plotting simulation results    
+    parser.add_argument('--sim_file', required=False, type=str,
+            help="Name of simulation file to analyze.")
     parser.add_argument('--zminmax', type=float, nargs=2, required=False,
             help="Bounds for water height color bar")
+    parser.add_argument('--use_basemap', action="store_true", required=False,
+            help="Whether to plot a basemap coastal outline over the grid animation")
+    parser.add_argument('--fps', type=int, required=False, default=20,
+            help="Frames per second for animations")
+    parser.add_argument('--dpi', type=int, required=False, default=100,
+            help="Bounds for water height color bar")
     
-    parser.add_argument('--sim_file', required=False, type=str, nargs='+',
-            help="Name of simulation file to analyze.")
     
     args = parser.parse_args()
     
-#    SIMFILE = "ChannelIslands_x3_gauss_output.nc"    
-#    SIMFILE = "Tohoku_x1_realistic_output.nc"
-     
+
     if args.mode == 'generate_bathy':
+        assert args.lon_bounds, "Please specify longitude bounds with --lon_bounds argument"
+        assert args.lat_bounds, "Please specify latitude bounds with --lat_bounds argument"
+        assert args.bathy_save_name,  "Please specify bathymetry file save name with --bathy_save_name argument"
+        
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET =====
         ETOPO1_FILE = "ETOPO1/ETOPO1_Ice_g_gmt4.grd"
+        
+        # TODO: store simulation boundaries, and any other relevant info, in json files        
         # =================================
-#        SAVE_NAME = "bathymetry/ChannelIslands_x5_lld.txt"
-#        MIN_LAT = 33.75
-#        MAX_LAT = 34.3
-#        MIN_LON = -120.2
-#        MAX_LON = -119.2
+        # SAVE_NAME = "bathymetry/ChannelIslands_x5_lld.txt"
+        # MIN_LAT = 33.75
+        # MAX_LAT = 34.3
+        # MIN_LON = -120.2
+        # MAX_LON = -119.2
         # =================================
+        # SAVE_NAME = "bathymetry/Tohoku_x2_lld.txt"
+        # MIN_LAT = 34.7
+        # MAX_LAT = 41.6
+        # MIN_LON = 140.1
+        # MAX_LON = 144.5
         # =================================
-#        SAVE_NAME = "bathymetry/Tohoku_x2_lld.txt"
-#        MIN_LAT = 34.7
-#        MAX_LAT = 41.6
-#        MIN_LON = 140.1
-#        MAX_LON = 144.5
-        # =================================
-        SAVE_NAME = args.save_name
+        SAVE_NAME = args.bathy_save_name
         FACTOR  = args.resolution
         
         MIN_LAT = args.lat_bounds[0]
@@ -535,84 +564,72 @@ if __name__ == "__main__":
         MAX_LON = args.lon_bounds[1]
 
         # --- write grid ------
-        lats, lons, bathy = read_ETOPO1.grab_ETOPO1_subset_interpolated(ETOPO1_FILE,min_lat=MIN_LAT,max_lat=MAX_LAT,min_lon=MIN_LON,max_lon=MAX_LON, factor=FACTOR)
+        # TODO: transition from txt files to netCDF files containing bathymetry data, possibly shift to reading directly from ETOPO1 in c++ sim
+        lats, lons, bathy = read_ETOPO1.grab_ETOPO1_subset_interpolated(ETOPO1_FILE, min_lat=MIN_LAT, max_lat=MAX_LAT, min_lon=MIN_LON, max_lon=MAX_LON, factor=FACTOR)
         read_ETOPO1.write_grid(SAVE_NAME,lats,lons,bathy)
-
-    if args.mode == 'eq_field_eval':
-        # =================================
-#        LLD_NAME = "bathymetry/Channel_Islands_largest_subset_lld.txt"
-#        MODEL     = "~/VirtQuake/UCERF3_reindexed/Model/UCERF3_VQmeshed_from_EQSIM_ReIndexed_AseismicCut_0-11_taper_drops0.9.h5"
-#        EVENTS    = "~/VirtQuake/UCERF3_reindexed/VQ_runs/events_UCERF3_ReIndexed_AseismicCut_0-11_taper_drops0-9_50kyr_dyn0-2_greenLimits.h5"
-#        EVID      = 39951
-        # =================================
-        LLD_NAME = "bathymetry/Tohoku_x1_lld.txt"
-        MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
-        EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
-        EVID      = 1196
-        # =================================
-        # ---- compute field and write it ------
-#        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --horizontal --model_file {} --event_file {} --event_id {} --lld_file {} ".format(MODEL, EVENTS, EVID, LLD_NAME))
-        system("python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --model_file {} --event_file {} --uniform_slip 10 --lld_file {} ".format(MODEL, EVENTS, LLD_NAME))
         
-
-    if args.mode == 'eq_field_plot':
-        Levels = [-.3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
-        plot_eq_displacements("bathymetry/Channel_Islands_largest_subset_lld_dispField_event39951.txt",Levels, "outputs/disp_map.png")
     
-    
-    if args.mode == 'eq_field_plot_horiz':
-        EVID = 8
-        plot_eq_disps_horiz("fields/Tohoku_lld_dispField_event{}.xyuen".format(EVID), "fields/disp_map_event{}".format(EVID))
-        
-        
     if args.mode == 'plot_bathy':
-        #Levels = [-3, -.2, -.1, -.05, -.008, .008, .05, .1, .2, .3]
-        #bathy_topo_map("local/Channel_Islands.txt",Levels, "bathy_map.png")
-        bathy_file="bathymetry/ChannelIslands_x3_lld.txt"
-        save_file="ChannelIslands_x3_bathymap.png"
-        bathy_topo_map(bathy_file, save_file)
-
-
-    if args.mode == 'animate': 
-        MAKE_MAP = False
-    if args.mode == 'animate_map':
-        MAKE_MAP = True
-    if args.mode == 'animate' or args.mode == 'animate_map':
-        sim_file = args.sim_file[0]
-        save_file = sim_file.split(".")[0]+"_grid.mp4"
-        #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
-        sim_data = Dataset(sim_file, 'r', format='NETCDF4')
-        times = np.array(sim_data.variables['time'])
-        FPS = 20
-        DPI = 100
-        T_MIN, T_MAX = times.min(), times.max()
-        T_STEP = times[1] - times[0]
-        assert T_STEP > 0
-        N_STEP = float(T_MAX-T_MIN)/T_STEP
-        if args.zminmax:
-            zminmax = args.zminmax
+        assert args.lld_file, "Please specify bathymetry LLD file with --lld_file argument"
+        bathy_topo_map(args.lld_file)
+    
+    
+    if args.mode == 'eq_field_eval':
+        assert args.lld_file, "Please specify bathymetry lld to plot against with --lld_file argument"
+        assert args.vq_model_file, "Please specify VQ fault model file with --vq_model_file argument"
+        
+        VQ_DIR = "~/VirtQuake/"
+        
+        # =================================
+        # LLD_NAME = "bathymetry/Channel_Islands_largest_subset_lld.txt"
+        # MODEL     = "~/VirtQuake/UCERF3_reindexed/Model/UCERF3_VQmeshed_from_EQSIM_ReIndexed_AseismicCut_0-11_taper_drops0.9.h5"
+        # EVENTS    = "~/VirtQuake/UCERF3_reindexed/VQ_runs/events_UCERF3_ReIndexed_AseismicCut_0-11_taper_drops0-9_50kyr_dyn0-2_greenLimits.h5"
+        # EVID      = 39951
+        # =================================
+        # LLD_NAME = "bathymetry/Tohoku_x1_lld.txt"
+        # MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
+        # EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
+        # EVID      = 1196
+        # =================================        
+        
+        system_command = "python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --model_file {} --lld_file {}".format(args.vq_model_file, args.lld_file)
+        
+        if args.horizontal:
+            # TODO: transition from txt and xyuen text files to netCDF files containing all displacement data
+            system_command += " --horizontal"
+        
+        if args.vq_event_file or args.event_id:
+            assert args.vq_event_file, "Please specify event file with --vq_event_file argument"
+            assert args.event_id, "Please specify event ID with --event_id argument"
+            system_command += " --event_file {} --event_id {}".format(args.vq_event_file, args.event_id)
         else:
-            zminmax = None
-        #zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
-        MAKE_MAP = False
-        # Makes animation
-        make_grid_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, zminmax, doBasemap = MAKE_MAP)
+            system_command += " --uniform_slip 10"       
+           
+        os.system(system_command)
+       
+       
+    if args.mode == 'eq_field_plot':
+        assert args.field_file, "Please specify displacement field file with --field_file argument"
         
+        if not args.plot_horizontal:
+            plot_eq_displacements(args.field_file)
+        else:
+            assert os.path.splitext(args.field_file)[1] == 'xyuen', "Must have .xyuen file format for horizontal field plotting"
+            plot_eq_disps_horiz(args.field_file)
+    
+    
+    if args.mode == 'animate' or args.mode == 'verify':
+        assert args.sim_file, "Please specify simulation file with the --sim_file argument"
         
-    if args.mode == 'verify':
-        sim_file = args.sim_file[0]
-        save_file = sim_file.split(".")[0]+"_crosssection.mp4"
-        # For text files
-        #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
-        sim_data = Dataset(sim_file, 'r', format='NETCDF4')
-        times = np.array(sim_data.variables['time'])
-        FPS = 20
-        DPI = 100
-        T_MIN, T_MAX = times.min(), times.max()
-        T_STEP = times[1] - times[0]
-        assert T_STEP > 0
-        N_STEP = float(T_MAX-T_MIN)/T_STEP
-        make_crosssection_animation(sim_data, FPS, DPI, T_MIN, T_MAX, T_STEP, N_STEP, save_file)
+        this_sim = sim_output(args.sim_file)
+        
+        if args.mode == 'animate': 
+            #zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
+            # Makes animation
+            this_sim.make_grid_animation(args.fps, args.dpi, zminmax = args.zminmax, doBasemap = args.use_basemap)
+        
+        if args.mode == 'verify':
+            this_sim.make_crosssection_animation(args.fps, args.dpi)
         
         
         
