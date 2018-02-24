@@ -1,28 +1,47 @@
 # TsunamiGlobe
-C++ library for modeling tsunamis from Virtual Quake simulated earthquakes using the Tsunami Squares method (Steven N. Ward).  Extended from c++ code written by Kasey W. Schultz and John Max Wilson (<https://github.com/johnmaxwilson/TsunamiSquares>) with intent to model a spherical or ellipsoidal Earth and improve stability.  NOAA ETOPO1 combined bathymetry and topology data not included, can be downloaded from <https://www.ngdc.noaa.gov/mgg/global/>
- 
-All tools for generating initial seafloor uplift initial conditions use the quakelib library, part of Virtual Quake (<https://geodynamics.org/cig/software/vq/>).
+C++ library for modeling tsunamis from Virtual Quake simulated earthquakes using the Tsunami Squares method (Steven N. Ward).  Extended from c++ code written by Kasey W. Schultz and John Max Wilson (<https://github.com/johnmaxwilson/TsunamiSquares>) with intent to model a spherical or ellipsoidal Earth and improve stability.
 
+## Requirements
+NOAA ETOPO1 combined bathymetry and topology data not included, can be downloaded from <https://www.ngdc.noaa.gov/mgg/global/>
+Generating seafloor uplift initial conditions requires the quakelib library, part of Virtual Quake (<https://geodynamics.org/cig/software/vq/>).
 
-To compile, use  
+Additionally, the following packages and libraries are required
+### C++
+OpenMP
+Geographiclib
+boost v1.64
+netCDF
+ALGLIB
+
+### Python
+python 2.7
+numpy
+matplotlib
+scipy
+argparse
+Geographiclib
+netCDF4
+
+### How to Use
+To compile, do
 '$ bash setup.sh'
 
-Run simulation with  
-'$ ./TsunamiSquares tsunami_params.txt'
+Run simulation with
+'$ ./TsunamiGlobe tsunami_params.txt'
 
-Visualizations can be created with  
-'$ python tsunamisquares.py'
+Visualizations, bathymetry subsets, and initial condition displacement fields can be created with tsunami_tools.py.  For usage options, do
+'$ python tsunami_tools.py --help'
 
 
-###Parameter Definitions  
+### Parameter Definitions  
 tsunami_params.txt contains simulation parameters which may be changed without recompiling from source.
 
-|  Parameter | Definition |  
-|:-----------|-----------|  
+|  Parameter | Definition |
+|:-----------|-----------|
 |out\_file\_name | File name for simulation result output|
 |bathy\_file | File with bathymetry / topography data|
 |kml\_file | File for KML output (currently unused)|
-|initial\_conditions | Type of initial conditions for simulation. Choose from eq, bump, guass, and saved|
+|initial\_conditions | Type of initial conditions for simulation. Choose from eq, bump, gauss, and saved|
 |deformation\_file | File name for initial seafloor uplift data (e.g. from thrust earthquake)|
 |bump\_height | Used when testing, produces small initial seafloor displacement (use with initial\_condition  = bump)|
 |gauss\_height | Used when testing, height of initial gaussian pile of water (use with initial\_condition  = gauss)|
@@ -46,3 +65,4 @@ tsunami_params.txt contains simulation parameters which may be changed without r
 |flat\_depth | Used when flattening the bathymetry to a constant depth for testing purposes (negative for below sea level)|
 |doPlaneFit | Whether to use the plane-fitting method for acceleration calculations|
 |num\_threads | How many threads to use during multiprocessing blocks|
+|check\_sim\_health | Whether to check for NaNs and infs each time step and break the sim with helpful info if found |
