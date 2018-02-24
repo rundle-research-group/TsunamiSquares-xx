@@ -2,38 +2,38 @@
 C++ library for modeling tsunamis from Virtual Quake simulated earthquakes using the Tsunami Squares method (Steven N. Ward).  Extended from c++ code written by Kasey W. Schultz and John Max Wilson (<https://github.com/johnmaxwilson/TsunamiSquares>) with intent to model a spherical or ellipsoidal Earth and improve stability.
 
 ## Requirements
-NOAA ETOPO1 combined bathymetry and topology data not included, can be downloaded from <https://www.ngdc.noaa.gov/mgg/global/>
+NOAA ETOPO1 combined bathymetry and topology data not included, can be downloaded from <https://www.ngdc.noaa.gov/mgg/global/>  
 Generating seafloor uplift initial conditions requires the quakelib library, part of Virtual Quake (<https://geodynamics.org/cig/software/vq/>).
 
 Additionally, the following packages and libraries are required
 ### C++
-OpenMP
-Geographiclib
-boost v1.64
-netCDF
-ALGLIB
+OpenMP  
+Geographiclib  
+boost v1.64  
+netCDF  
+ALGLIB  
 
 ### Python
-python 2.7
-numpy
-matplotlib
-scipy
-argparse
-Geographiclib
-netCDF4
+python 2.7  
+numpy  
+matplotlib  
+scipy  
+argparse  
+Geographiclib  
+netCDF4  
 
 ### How to Use
-To compile, do
-'$ bash setup.sh'
+To compile, do  
+`$ bash setup.sh`
 
-Run simulation with
-'$ ./TsunamiGlobe tsunami_params.txt'
+Run simulation with  
+`$ ./TsunamiGlobe tsunami_params.txt`
 
-Visualizations, bathymetry subsets, and initial condition displacement fields can be created with tsunami_tools.py.  For usage options, do
-'$ python tsunami_tools.py --help'
+Visualizations, bathymetry subsets, and initial condition displacement fields can be created with tsunami_tools.py.  For usage options, do  
+`$ python tsunami_tools.py --help`
 
 
-### Parameter Definitions  
+## Parameter Definitions  
 tsunami_params.txt contains simulation parameters which may be changed without recompiling from source.
 
 |  Parameter | Definition |
