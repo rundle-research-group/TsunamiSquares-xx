@@ -42,11 +42,11 @@ tsunami_params.txt contains simulation parameters which may be changed without r
 |bathy\_file | File with bathymetry / topography data|
 |kml\_file | File for KML output (currently unused)|
 |initial\_conditions | Type of initial conditions for simulation. Choose from eq, bump, gauss, and saved|
-|deformation\_file | File name for initial seafloor uplift data (e.g. from thrust earthquake)|
-|bump\_height | Used when testing, produces small initial seafloor displacement (use with initial\_condition  = bump)|
-|gauss\_height | Used when testing, height of initial gaussian pile of water (use with initial\_condition  = gauss)|
-|gauss\_std | Used when testing, width of initial gaussian pile of water (use with initial\_condition  = gauss)|
-|initialstate\_file\_name | File name for initial conditions, loaded from previous simulation (use with initial\_condition  = saved)|
+|deformation\_file | File name for initial seafloor uplift data from simulated earthquake (use with initial\_conditions  = eq)|
+|bump\_height | Used when testing, produces small initial seafloor displacement (use with initial\_conditions  = bump)|
+|gauss\_height | Used when testing, height of initial gaussian pile of water (use with initial\_conditions  = gauss)|
+|gauss\_std | Used when testing, width of initial gaussian pile of water (use with initial\_conditions  = gauss)|
+|initialstate\_file\_name | File name for initial conditions, loaded from previous simulation (use with initial\_conditions  = saved)|
 |write\_sim\_state | Whether to write final simulation state at end of simulation|
 |finalstate\_file\_name	| File name for final simulation state save|
 |move\_bool | Whether to do the main square-moving simulation|
