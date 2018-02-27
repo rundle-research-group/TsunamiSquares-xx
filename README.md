@@ -17,6 +17,8 @@ ALGLIB
 python 2.7  
 numpy  
 matplotlib  
+Basemap  
+ffmpeg  
 scipy  
 argparse  
 Geographiclib  
