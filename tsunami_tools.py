@@ -485,58 +485,63 @@ def bathy_topo_map(LLD_FILE):
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
     
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()    
+    subparsers = parser.add_subparsers(title='mode', description='valid modes of usage', dest='mode')
     
-    # Select mode of opteration
-    parser.add_argument('mode', choices=['generate_bathy', 'plot_bathy', 'eq_field_eval', 'eq_field_plot', 'animate', 'verify'],
-            help="Select mode for script")
-            
-    # Options for generating bathymetry LLD files
-    parser.add_argument('--resolution', type=int, required=False, default=1,
+    # Arguments for generating bathymetry LLD files
+    parser_gen = subparsers.add_parser('generate_bathy', help='generate interpolated bathymetry subset from NOAA\'s ETOPO1 dataset')
+    parser_gen.add_argument('--resolution', type=int, required=False, default=1,
             help="Resolution interpolation multiplier for NOAA topography")
-    parser.add_argument('--lon_bounds', type=float, nargs=2, required=False,
+    parser_gen.add_argument('--lon_bounds', type=float, nargs=2, required=True,
             help="Minimum and maximum longitude for bathymetry")            
-    parser.add_argument('--lat_bounds', type=float, nargs=2, required=False,
+    parser_gen.add_argument('--lat_bounds', type=float, nargs=2, required=True,
             help="Minimum and maximum latitude for bathymetry")
-    parser.add_argument('--bathy_save_name', required=False,
+    parser_gen.add_argument('--bathy_save_name', required=True,
             help="File name for bathymetry")
     
-    # Options for generating EQ surface displacement fields and plotting bathymetry 
-    parser.add_argument('--lld_file', required=False,
+    # Arguments for plotting bathymetry 
+    parser_plot_bathy = subparsers.add_parser('plot_bathy', help='Plot previously-generated bathymetry LLD file')
+    parser_plot_bathy.add_argument('--lld_file', required=True,
+            help="Path of bathymetry file")    
+    
+    # Arguments for generating EQ surface displacement fields
+    parser_field_eval = subparsers.add_parser('eq_field_eval', help='Generate surface displacement for a VQ fault model')
+    parser_field_eval.add_argument('--lld_file', required=True,
             help="Path of bathymetry file")
-    parser.add_argument('--vq_model_file', required=False,
+    parser_field_eval.add_argument('--vq_model_file', required=True,
             help="Path to VQ fault model file")            
-    parser.add_argument('--vq_event_file', required=False,
+    parser_field_eval.add_argument('--vq_event_file', required=False,
             help="Path to VQ events file")
-    parser.add_argument('--event_id', type=int, required=False,
+    parser_field_eval.add_argument('--event_id', type=int, required=False,
             help="Event ID for VQ simulated earthquake")
     
-    # Options for plotting eq displacement fields
-    parser.add_argument('--field_file', required=False,
+    # Arguments for plotting eq displacement fields
+    parser_field_plot = subparsers.add_parser('eq_field_plot', help='Plot a surface displacement field')
+    parser_field_plot.add_argument('--field_file', required=True,
             help="Path of surface displacement file") 
-    parser.add_argument('--plot_horizontal', action="store_true", required=False,
+    parser_field_plot.add_argument('--plot_horizontal', action="store_true", required=False,
             help="Whether to plot the horizontal displacements in addition to vertical") 
     
-    # Options for plotting simulation results    
-    parser.add_argument('--sim_file', required=False, type=str,
+    # Arguments for plotting simulation results  
+    parser_animate = subparsers.add_parser('animate', help='Make animations from simulation output')        
+    parser_animate.add_argument('--type', choices=['grid', 'verify'], required=True,
+            help="Type of animation to make; birds-eye grid or cross-sectional verification against analytic solution")
+    parser_animate.add_argument('--sim_file', required=True,
             help="Name of simulation file to analyze.")
-    parser.add_argument('--zminmax', type=float, nargs=2, required=False,
+    parser_animate.add_argument('--zminmax', type=float, nargs=2, required=False,
             help="Bounds for water height color bar")
-    parser.add_argument('--use_basemap', action="store_true", required=False,
+    parser_animate.add_argument('--use_basemap', action="store_true", required=False,
             help="Whether to plot a basemap coastal outline over the grid animation")
-    parser.add_argument('--fps', type=int, required=False, default=20,
+    parser_animate.add_argument('--fps', type=int, required=False, default=20,
             help="Frames per second for animations")
-    parser.add_argument('--dpi', type=int, required=False, default=100,
+    parser_animate.add_argument('--dpi', type=int, required=False, default=100,
             help="Bounds for water height color bar")
-    
+            
     
     args = parser.parse_args()
     
 
     if args.mode == 'generate_bathy':
-        assert args.lon_bounds, "Please specify longitude bounds with --lon_bounds argument"
-        assert args.lat_bounds, "Please specify latitude bounds with --lat_bounds argument"
-        assert args.bathy_save_name,  "Please specify bathymetry file save name with --bathy_save_name argument"
         
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET =====
         ETOPO1_FILE = "ETOPO1/ETOPO1_Ice_g_gmt4.grd"
@@ -570,13 +575,10 @@ if __name__ == "__main__":
         
     
     if args.mode == 'plot_bathy':
-        assert args.lld_file, "Please specify bathymetry LLD file with --lld_file argument"
         bathy_topo_map(args.lld_file)
     
     
     if args.mode == 'eq_field_eval':
-        assert args.lld_file, "Please specify bathymetry lld to plot against with --lld_file argument"
-        assert args.vq_model_file, "Please specify VQ fault model file with --vq_model_file argument"
         
         VQ_DIR = "~/VirtQuake/"
         
@@ -599,9 +601,11 @@ if __name__ == "__main__":
             system_command += " --horizontal"
         
         if args.vq_event_file or args.event_id:
-            assert args.vq_event_file, "Please specify event file with --vq_event_file argument"
-            assert args.event_id, "Please specify event ID with --event_id argument"
+            if not args.vq_event_file or not args.event_id:
+                raise BaseException("Must specify both an event file and an event ID")
+                
             system_command += " --event_file {} --event_id {}".format(args.vq_event_file, args.event_id)
+            
         else:
             system_command += " --uniform_slip 10"       
            
@@ -609,26 +613,25 @@ if __name__ == "__main__":
        
        
     if args.mode == 'eq_field_plot':
-        assert args.field_file, "Please specify displacement field file with --field_file argument"
         
         if not args.plot_horizontal:
             plot_eq_displacements(args.field_file)
         else:
-            assert os.path.splitext(args.field_file)[1] == 'xyuen', "Must have .xyuen file format for horizontal field plotting"
+            if not os.path.splitext(args.field_file)[1] == 'xyuen':
+                raise BaseException("Must have .xyuen file format for horizontal field plotting")
             plot_eq_disps_horiz(args.field_file)
     
     
-    if args.mode == 'animate' or args.mode == 'verify':
-        assert args.sim_file, "Please specify simulation file with the --sim_file argument"
+    if args.mode == 'animate':
         
         this_sim = sim_output(args.sim_file)
         
-        if args.mode == 'animate': 
+        if args.type == 'grid':
             #zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
             # Makes animation
             this_sim.make_grid_animation(args.fps, args.dpi, zminmax = args.zminmax, doBasemap = args.use_basemap)
         
-        if args.mode == 'verify':
+        if args.type == 'verify':
             this_sim.make_crosssection_animation(args.fps, args.dpi)
         
         
