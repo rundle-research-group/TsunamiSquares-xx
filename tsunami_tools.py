@@ -193,7 +193,7 @@ class sim_output:
                 
                 analytic_Z = []
                 for dist in dist_array:
-                    analytic_Z.append(analyticGauss(dist, time, 10, 5000, 1000))
+                    analytic_Z.append(analyticGaussPile(dist, time, 10, 5000, 1000))
                 
                 # Plot the cross section for this time step
                 sim_plot.set_data(lons, level_ncVar[index][midlat_index])
@@ -206,14 +206,20 @@ class sim_output:
 
 
 
-def analyticGaussIntegrand(k, r, t, Dc, Rc, depth):
+
+
+
+
+
+
+def analyticGaussPileIntegrand(k, r, t, Dc, Rc, depth):
     dispersion = np.sqrt(9.80665*k*np.tanh(k*depth))
     #dispersion = k*np.sqrt(9.80665*depth)
     return Dc*Rc**2*k/2*np.cos(dispersion*t)*sp.special.jv(0, k*r)*np.exp(-(k*Rc/2)**2)
 
 
-def analyticGauss(r, t, Dc, Rc, depth):
-    return sp.integrate.quad(analyticGaussIntegrand, 0, 1e3, args=(r, t, Dc, Rc, depth), points=[0, 2e-3])[0]
+def analyticGaussPile(r, t, Dc, Rc, depth):
+    return sp.integrate.quad(analyticGaussPileIntegrand, 0, 1e3, args=(r, t, Dc, Rc, depth), points=[0, 2e-3])[0]
 #    k = np.linspace(0, 2e-3, 1e4)
 #    sumd = np.sum(analyticGaussIntegrand(k, r, t, Dc, Rc, depth))
 #    return np.diff(k)[0]*sumd

@@ -20,7 +20,6 @@ matplotlib
 Basemap  
 ffmpeg  
 scipy  
-argparse  
 Geographiclib  
 netCDF4  
 
