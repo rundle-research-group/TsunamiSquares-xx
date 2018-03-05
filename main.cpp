@@ -120,7 +120,7 @@ int main (int argc, char **argv) {
     // -------------------------------------------------------------------------------- //
     ///////                Simulation Initialization and Loading                   ///////
     // -------------------------------------------------------------------------------- //
-    // Read in the bathymetry data TODO: remove max depth calc from bathy reading and move to after the bottom flattening step
+    // Read in the bathymetry data TODO: remove max depth calc from bathy reading and move to after the initial condition step
     this_world.clear();
     std::cout << std::endl << "Reading..."   << bathy_file.c_str() << std::endl;
     this_world.read_bathymetry(bathy_file.c_str());
@@ -177,7 +177,6 @@ int main (int argc, char **argv) {
     //double dt = (double) (int) this_world.square(0).Lx()*this_world.square(0).Ly()/(2*D); //seconds
     // Use file-provided time step, Check time step for minimum against shallow water wave speed.
 	double dt;
-	double G = 9.80665;
     double wave_speed = sqrt(abs(G*this_world.max_depth()));
     double maxDt = this_world.min_spacing() / wave_speed;
 

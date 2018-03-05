@@ -62,6 +62,7 @@ using namespace alglib;
 #define EARTH_EQUATORIAL_RADIUS 6378137.0           // in m
 #define EARTH_POLAR_RADIUS      6356752.314245      // in m
 #define WGS_84_FLATTENING       1/298.257223563
+#define G 						9.80665				//mean gravitational acceleration at Earth's surface [NIST]
 
 #define CROSS_TOLERANCE 0.000001
 

@@ -469,6 +469,13 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			//  each vertex of the square to it's new location on the sphere.  This forms a Ring, which intersects some number of
 			//  boxes in our rtree.
 			new_velo = current_velo + current_accel*ldt;
+
+			//Catch velocities that run away due to bad local momentum conservation, etc.
+			if(new_velo.mag()>sqrt(abs(G*max_depth()))){
+				new_velo = new_velo*sqrt(abs(G*max_depth()))/new_velo.mag();
+			}
+
+
 			average_velo = current_velo + current_accel*0.5*ldt;
 			distance_traveled = average_velo.mag()*ldt;
 
@@ -660,7 +667,6 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bool doPlaneFit) {
     std::map<UIndex, Square>::iterator square_it = _squares.find(square_id);
     Vec<2> grav_accel, friction_accel, new_accel, gradient;
-    double G = 9.80665; //mean gravitational acceleration at Earth's surface [NIST]
     
     // Only accelerate the water in this square IF there is water in this square
     if (square_it->second.height() > SMALL_HEIGHT) {
