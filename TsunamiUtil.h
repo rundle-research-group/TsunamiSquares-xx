@@ -66,7 +66,7 @@ using namespace alglib;
 
 #define CROSS_TOLERANCE 0.000001
 
-#define SMALL_HEIGHT 0
+#define SMALL_HEIGHT 0.000001
 
 namespace tsunamisquares {
     // Provides general setup information regarding the library.
