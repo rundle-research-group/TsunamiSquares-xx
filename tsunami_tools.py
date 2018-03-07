@@ -4,6 +4,7 @@ import sys
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
+from matplotlib import pylab
 from matplotlib import pyplot as plt
 import matplotlib.colors as mcolor
 import matplotlib.animation as manimation
@@ -17,24 +18,41 @@ from geographiclib.geodesic import Geodesic as geo
 from netCDF4 import Dataset
 import os
 import read_ETOPO1
+import pandas as pd
 #import quakelib
 
 # --------------------------------------------------------------------------------
 
-class sim_output:
+class simAnalyzer:
     def __init__(self, sim_file_path):
         self.save_file_prefix = os.path.splitext(sim_file_path)[0]
         #sim_data = np.genfromtxt(sim_file, dtype=[('time','f8'),('lat','f8'),('lon','f8'), ('z','f8'), ('alt','f8')])
         self.sim_data = Dataset(sim_file_path, 'r', format='NETCDF4')
-    
-    
+        
+        # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays    
+        self.times = np.array(self.sim_data.variables['time'])
+        self.lons = np.array(self.sim_data.variables['longitude'])
+        self.lats = np.array(self.sim_data.variables['latitude'])
+        
+        #TODO: check for simulation that wraps around int date line.
+        self.minlon, self.maxlon, self.meanlon = self.lons.min(), self.lons.max(), self.lons.mean()
+        self.minlat, self.maxlat, self.meanlat = self.lats.min(), self.lats.max(), self.lats.mean()
+        self.dlon = abs(self.lons[1]-self.lons[0])
+        self.dlat = abs(self.lats[1]-self.lats[0])      
+        
+        height_ncVar = self.sim_data.variables['height']
+        alt_ncVar = self.sim_data.variables['altitude']
+        
+        # Calculate locations where we simulated ocean runup
+        ever_has_water = np.any(height_ncVar, axis=0)
+        self.sim_inundation_array = np.ma.masked_where(alt_ncVar[0] < 0, ever_has_water)
+        
+        
     def make_grid_animation(self, FPS, DPI, zminmax=None, doBasemap=False):
         
         save_file = self.save_file_prefix+"_grid.mp4"
         
-        #sim_data is expected to be a netcdf dataset 
-        # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays    
-        times = np.array(self.sim_data.variables['time'])
+        #sim_data is expected to be a netcdf dataset
         lons = np.array(self.sim_data.variables['longitude'])
         lats = np.array(self.sim_data.variables['latitude'])
         
@@ -44,7 +62,7 @@ class sim_output:
         alt_ncVar = self.sim_data.variables['altitude']
         
         # Get ranges
-        N_STEP = len(times)
+        N_STEP = len(self.times)
         z_min =  np.inf
         z_max = -np.inf
         z_avs = []
@@ -57,11 +75,6 @@ class sim_output:
         z_max = np.max(np.ma.masked_where(height_ncVar[0] == 0.0000, level_ncVar[0]))    
         
         print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
-        #TODO: check for simulation that wraps around int date line.
-        lon_min,lon_max = lons.min(), lons.max()
-        lat_min,lat_max = lats.min(), lats.max()
-        mean_lat = lats.mean()
-        mean_lon = lons.mean()    
         if(zminmax != None): z_min,z_max = zminmax
     
         # Initialize movie writing stuff
@@ -74,15 +87,15 @@ class sim_output:
         
         if not doBasemap:
             ax = fig.add_subplot(111)
-            plt.xlim(lon_min, lon_max)
+            plt.xlim(self.minlon, self.maxlon)
             plt.ylim(lat_min, lat_max)
     #        ax.get_xaxis().get_major_formatter().set_useOffset(False)
     #        ax.get_yaxis().get_major_formatter().set_useOffset(False)
         else:
-            m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
-                    llcrnrlon=lon_min, urcrnrlon=lon_max, lat_0=mean_lat, lon_0=mean_lon, resolution='h')
-            m.drawmeridians(np.linspace(lon_min,lon_max,num=5.0),labels=[0,0,0,1], linewidth=0)
-            m.drawparallels(np.linspace(lat_min,lat_max,num=5.0),labels=[1,0,0,0], linewidth=0)
+            m = Basemap(projection='cyl',llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
+                    llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='h')
+            m.drawmeridians(np.linspace(self.minlon, self.maxlon, num=5.0), labels=[0,0,0,1], linewidth=0)
+            m.drawparallels(np.linspace(self.minlat, self.maxlat, num=5.0), labels=[1,0,0,0], linewidth=0)
             m.drawcoastlines(linewidth=0.5)
             m.ax = fig.add_subplot(111)
             ax = m.ax
@@ -107,7 +120,7 @@ class sim_output:
                 this_level  = level_ncVar[index]
                 this_height = height_ncVar[index]
                 this_alt    = alt_ncVar[index]
-                time   = times[index]
+                time   = self.times[index]
                 
                 # Masked array via conditional, don't color the land unless it has water on it
                 masked_data = np.ma.masked_where(this_height == 0.0000, this_level)            
@@ -116,7 +129,7 @@ class sim_output:
     
                 # Plot the surface for this time step
                 if surface is None:
-                    ax.imshow(masked_data, cmap=cmap,origin='lower', norm=norm, extent=[lon_min,lon_max,lat_max,lat_min], interpolation='none')
+                    ax.imshow(masked_data, cmap=cmap,origin='lower', norm=norm, extent=[self.minlon, self.maxlon, self.maxlat, self.minlat], interpolation='none')
                 else:
                     surface.set_data(masked_data)
                     
@@ -131,8 +144,6 @@ class sim_output:
         save_file = self.save_file_prefix+"_crosssection.mp4"
         
         #sim_data is expected to be a netcdf dataset 
-        # These arrays shouldn't be too big, so go ahead and load them into memory as numpy arrays
-        times = np.array(self.sim_data.variables['time'])
         lons = np.array(self.sim_data.variables['longitude'])
         lats = np.array(self.sim_data.variables['latitude'])
         
@@ -142,7 +153,7 @@ class sim_output:
         alt_ncVar = self.sim_data.variables['altitude']
         
         # Get ranges
-        N_STEP = len(times)
+        N_STEP = len(self.times)
         z_min =  np.inf
         z_max = -np.inf
         z_avs = []
@@ -153,11 +164,7 @@ class sim_output:
             z_avs.append(masked_data.mean())
         
         print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
-        #TODO: check for simulation that wraps around int date line.
-        lon_min,lon_max = lons.min(), lons.max()
-        lat_min,lat_max = lats.min(), lats.max()
-        mean_lat = lats.mean()
-        mean_lon = lons.mean()
+        
     
         # Initialize movie writing stuff
         FFMpegWriter = manimation.writers['ffmpeg']
@@ -167,19 +174,19 @@ class sim_output:
         # Initialize the frame and axes
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        plt.xlim(lon_min, lon_max)
+        plt.xlim(self.minlon, self.maxlon)
         plt.ylim(z_min, z_max)
         ax.get_xaxis().get_major_formatter().set_useOffset(False)
         ax.get_yaxis().get_major_formatter().set_useOffset(False)
         divider = make_axes_locatable(ax)        
         
-        midlat_index = int(len(lats)/2)
+        midlat_index = int(len(self.lats)/2)
             
         # Make array of distances from mean lat/lon
         dist_array = []
         geod = geo(6371000, 0)
-        for lon in lons:
-            distance = geod.Inverse(lats[midlat_index], lon, mean_lat, mean_lon)['s12']
+        for lon in self.lons:
+            distance = geod.Inverse(self.lats[midlat_index], lon, self.meanlat, self.meanlon)['s12']
             dist_array.append(abs(distance))
         dist_array = np.array(dist_array)
     
@@ -188,7 +195,7 @@ class sim_output:
         
         with writer.saving(fig, save_file, DPI):
             for index in range(int(N_STEP)):
-                time   = times[index]
+                time   = self.times[index]
                 print("step: {}  time: {}".format(index, time))
                 
                 analytic_Z = []
@@ -196,8 +203,8 @@ class sim_output:
                     analytic_Z.append(analyticGaussPile(dist, time, 10, 5000, 1000))
                 
                 # Plot the cross section for this time step
-                sim_plot.set_data(lons, level_ncVar[index][midlat_index])
-                analytic_plot.set_data(lons, analytic_Z)
+                sim_plot.set_data(self.lons, level_ncVar[index][midlat_index])
+                analytic_plot.set_data(self.lons, analytic_Z)
                 
                 # Text box with the time
                 plt.figtext(0.02, 0.5, 'Time: {:02f}:{:02f}'.format(int(time)/60, int(time)%60), bbox={'facecolor':'yellow', 'pad':5})
@@ -205,12 +212,56 @@ class sim_output:
                 writer.grab_frame()
 
 
+    def load_historical_runup_CSV(self, csv_file_path, year, month, day):
+        inund_df = pd.read_csv(csv_file_path, sep='\t')
 
+        inund_df = inund_df[inund_df.LATITUDE.notnull()]
+        inund_df = inund_df[inund_df.LONGITUDE.notnull()]
+        inund_df = inund_df[inund_df.HORIZONTAL_INUNDATION.notnull()]
+        
+        self.inund_df = inund_df[((inund_df.YEAR == year) & (inund_df.MONTH == month) & (inund_df.DAY == day) &
+                                 (inund_df.LATITUDE >= self.minlat) & (inund_df.LATITUDE <= self.maxlat) &
+                                 (inund_df.LONGITUDE >= self.minlon) & (inund_df.LONGITUDE <= self.maxlon) &
+                                 (inund_df.HORIZONTAL_INUNDATION > 0))]
+        
+        # Now create an array to match the simulated inundation array showing observed inundations
+        obs_histogram, xedge, yedge = np.histogram2d(inund_df.LONGITUDE, inund_df.LATITUDE, bins=[len(self.lons), len(self.lats)], 
+                                                          range=[[self.minlon-self.dlon/2.0, self.maxlon+self.dlon/2.0], [self.minlat-self.dlat/2.0, self.maxlat+self.dlat/2.0]])
+        obs_histogram = np.flipud(obs_histogram.T)
+        alt_ncVar = self.sim_data.variables['altitude']
+        self.obs_inundation_array = np.ma.masked_where(alt_ncVar[0] < 0, (obs_histogram>0))
 
+        
 
+    def compare_sim_and_obs_runup(self):
+        
+        all_inundation_results = np.zeros_like(self.sim_inundation_array.astype(int))
+        all_inundation_results[np.logical_and(self.sim_inundation_array==0, self.obs_inundation_array==1)] = 1
+        all_inundation_results[np.logical_and(self.sim_inundation_array==1, self.obs_inundation_array==0)] = 2
+        all_inundation_results[np.logical_and(self.sim_inundation_array==1, self.obs_inundation_array==1)] = 3
+        
+        alt_ncVar = self.sim_data.variables['altitude']
+        self.all_inundation_results = np.ma.masked_where(alt_ncVar[0]<0, all_inundation_results)
+        
+        
+        plt.close(1)
+        fig, ax = plt.subplots(num=1)
+        m = Basemap(projection='cyl',llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
+                    llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='i')
+        m.drawmeridians(np.linspace(self.minlon, self.maxlon, num=5.0), labels=[0,0,0,1], linewidth=0)
+        m.drawparallels(np.linspace(self.minlat, self.maxlat, num=5.0), labels=[1,0,0,0], linewidth=0)
+        #m.drawcoastlines(linewidth=0.5)
 
-
-
+        cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['gray', 'maroon', 'blue', 'lime'], N=4)
+        
+        map_ax = m.imshow(self.all_inundation_results, origin='upper', extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='nearest', cmap=cm)
+        
+        cbar = fig.colorbar(map_ax, ticks=[3/8., 9/8., 15/8., 21/8.])
+        cbar.ax.set_yticklabels(['Dry', 'Miss', 'False\nAlarm', 'Success'])
+        
+        plt.savefig(self.save_file_prefix+'_inundation.png',dpi=100)
+        
+        
 
 def analyticGaussPileIntegrand(k, r, t, Dc, Rc, depth):
     dispersion = np.sqrt(9.80665*k*np.tanh(k*depth))
@@ -492,7 +543,7 @@ def bathy_topo_map(LLD_FILE):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()    
-    subparsers = parser.add_subparsers(title='mode', description='valid modes of usage', dest='mode')
+    subparsers = parser.add_subparsers(title='mode', description='valid modes of usage', dest='mode')    
     
     # Arguments for generating bathymetry LLD files
     parser_gen = subparsers.add_parser('generate_bathy', help='generate interpolated bathymetry subset from NOAA\'s ETOPO1 dataset')
@@ -530,7 +581,7 @@ if __name__ == "__main__":
     
     # Arguments for plotting simulation results  
     parser_animate = subparsers.add_parser('animate', help='Make animations from simulation output')        
-    parser_animate.add_argument('--type', choices=['grid', 'verify'], required=True,
+    parser_animate.add_argument('--type', choices=['grid', 'xsection'], required=True,
             help="Type of animation to make; birds-eye grid or cross-sectional verification against analytic solution")
     parser_animate.add_argument('--sim_file', required=True,
             help="Name of simulation file to analyze.")
@@ -542,9 +593,20 @@ if __name__ == "__main__":
             help="Frames per second for animations")
     parser_animate.add_argument('--dpi', type=int, required=False, default=100,
             help="Bounds for water height color bar")
-            
     
-    args = parser.parse_args()
+    # Arguments for verifying simualtion against observed historical runups
+    parser_verify = subparsers.add_parser('verify', help='Verify simulation results against NOAA historical runup data')
+    parser_verify.add_argument('--sim_file', required=True,
+            help="Name of simulation file to analyze.")
+    parser_verify.add_argument('--obs_file', required=True,
+            help="Observed historical tsunami runup CSV file")
+    parser_verify.add_argument('--ymd', nargs=3, type=int, required=True,
+            help="Year, Month, and Day of historical runup information needed")
+    
+    
+    args = parser.parse_args(['verify', '--sim_file', 'outputs/Tohoku/TohokuSmall_x2_contRealisticX1_output_000-1600.nc', 
+                              '--obs_file', '../historical_runups/tsrunup.csv', '--ymd', '2011', '3', '11'])
+#    args = parser.parse_args()
     
 
     if args.mode == 'generate_bathy':
@@ -628,18 +690,25 @@ if __name__ == "__main__":
             plot_eq_disps_horiz(args.field_file)
     
     
-    if args.mode == 'animate':
+    if args.mode in ['animate', 'verify']:
         
-        this_sim = sim_output(args.sim_file)
+        this_sim = simAnalyzer(args.sim_file)
+
+        if args.mode == 'verify':
+            # Load historical inundation data and compare it to simulated results
+            this_sim.load_historical_runup_CSV(args.obs_file, args.ymd[0], args.ymd[1], args.ymd[2])
+            this_sim.compare_sim_and_obs_runup()
         
-        if args.type == 'grid':
-            #zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
-            # Makes animation
-            this_sim.make_grid_animation(args.fps, args.dpi, zminmax = args.zminmax, doBasemap = args.use_basemap)
-        
-        if args.type == 'verify':
-            this_sim.make_crosssection_animation(args.fps, args.dpi)
-        
+        if args.mode == 'animate':
+            if args.type == 'grid':
+                #zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
+                # Makes animation
+                this_sim.make_grid_animation(args.fps, args.dpi, zminmax = args.zminmax, doBasemap = args.use_basemap)
+            
+            if args.type == 'xsection':
+                this_sim.make_crosssection_animation(args.fps, args.dpi)
+
+                
         
         
         
