@@ -604,9 +604,9 @@ if __name__ == "__main__":
             help="Year, Month, and Day of historical runup information needed")
     
     
-    args = parser.parse_args(['verify', '--sim_file', 'outputs/Tohoku/TohokuSmall_x2_contRealisticX1_output_000-1600.nc', 
-                              '--obs_file', '../historical_runups/tsrunup.csv', '--ymd', '2011', '3', '11'])
-#    args = parser.parse_args()
+#    args = parser.parse_args(['verify', '--sim_file', 'outputs/Tohoku/TohokuSmall_x2_contRealisticX1_output_000-1600.nc', 
+#                              '--obs_file', '../historical_runups/tsrunup.csv', '--ymd', '2011', '3', '11'])
+    args = parser.parse_args()
     
 
     if args.mode == 'generate_bathy':
