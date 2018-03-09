@@ -658,11 +658,7 @@ if __name__ == "__main__":
         # EVID      = 1196
         # =================================        
         
-        system_command = "python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --model_file {} --lld_file {}".format(args.vq_model_file, args.lld_file)
-        
-        if args.horizontal:
-            # TODO: transition from txt and xyuen text files to netCDF files containing all displacement data
-            system_command += " --horizontal"
+        system_command = "python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF --horizontal --model_file {} --lld_file {}".format(args.vq_model_file, args.lld_file)
         
         if args.vq_event_file or args.event_id:
             if not args.vq_event_file or not args.event_id:

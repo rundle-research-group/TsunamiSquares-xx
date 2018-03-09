@@ -151,7 +151,8 @@ int main (int argc, char **argv) {
 	initial_conds["saved"]= 4;
 	switch(initial_conds[initial_conditions]){
 		case 1: std::cout << "Deforming from file" << std::endl;
-			       this_world.deformFromFile(deformation_file);
+			       //this_world.deformFromFile_txt(deformation_file);
+			       this_world.deformFromFile_netCDF(deformation_file);
 			       break;
 		case 2: std::cout << "Deforming central bump " << std::endl;
     			this_world.bumpCenter(bump_height);

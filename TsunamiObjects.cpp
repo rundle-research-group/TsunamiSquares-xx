@@ -2133,7 +2133,8 @@ int tsunamisquares::World::write_file_kml(const std::string &file_name) {
     return 0;
 }
 
-int tsunamisquares::World::deformFromFile(const std::string &file_name) {
+
+int tsunamisquares::World::deformFromFile_txt(const std::string &file_name) {
     std::ifstream   in_file;
     UIndex          i, num_points, mappedID;
     double          dz;
@@ -2181,6 +2182,104 @@ int tsunamisquares::World::deformFromFile(const std::string &file_name) {
 
     return 0;
 }
+
+
+void tsunamisquares::World::deformFromFile_netCDF(const std::string &file_name) {
+
+	// Read in NetCDF
+	NcFile dataFile(file_name, NcFile::read);
+
+	long NLAT = dataFile.getDim("latitude").getSize();
+	long NLON = dataFile.getDim("longitude").getSize();
+
+	// These will hold our data.
+	float lats_in[NLAT], lons_in[NLON];
+	float uplift_in[NLAT][NLON];
+	float eastU_in[NLAT][NLON];
+	float northV_in[NLAT][NLON];
+
+	// Get the variables
+	NcVar latVar, lonVar;
+	latVar = dataFile.getVar("latitude");
+	lonVar = dataFile.getVar("longitude");
+	latVar.getVar(lats_in);
+	lonVar.getVar(lons_in);
+
+	NcVar upliftVar, eastUVar, northVVar;
+	upliftVar = dataFile.getVar("uplift");
+	eastUVar = dataFile.getVar("east U");
+	northVVar = dataFile.getVar("north V");
+	upliftVar.getVar(uplift_in);
+	eastUVar.getVar(eastU_in);
+	northVVar.getVar(northV_in);
+
+
+	/* Make 2d interpolation from each input arrays (from netCDF file)
+	 *
+	 * Do rtree overlap between input bounds and this world square rtree to get set of squares that are affected by input file
+	 *
+	 * Loop through concerned squares, set all their values from the 2d interpolations from input
+	 *    Make sure there's an if(!flatten_bool) before setting altitude
+	 */
+
+	// put input data into alglib real_1d_arrays
+	real_1d_array lon_algarr, lat_algarr;
+	lon_algarr.setlength(NLON);
+	lat_algarr.setlength(NLAT);
+	real_1d_array uplift_algarr, eastU_algarr, northV_algarr;
+	uplift_algarr.setlength(NLON*NLAT);
+	eastU_algarr.setlength(NLON*NLAT);
+	northV_algarr.setlength(NLON*NLAT);
+	for(int j=0; j<NLAT; j++){
+		lat_algarr[j] = lats_in[j];
+		for(int i=0; i<NLON; i++){
+			lon_algarr[i] = lons_in[i];
+			uplift_algarr[j*NLON+i]  = uplift_in[j][i];
+			eastU_algarr[j*NLON+i]  = eastU_in[j][i];
+			northV_algarr[j*NLON+i]     = northV_in[j][i];
+		}
+	}
+
+	// build splines
+	spline2dinterpolant uplift_spline, eastU_spline, northV_spline;
+	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, uplift_algarr,  1, uplift_spline);
+	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, eastU_algarr,  1, eastU_spline);
+	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, northV_algarr,     1, northV_spline);
+
+	//Do rtree grab of all squares that need their initial conditions set
+	point_spheq top_left_in, top_right_in, bottom_right_in, bottom_left_in;
+	float minlon = lons_in[0];
+	float maxlon = lons_in[NLON-1];
+	float minlat = lats_in[0];
+	float maxlat = lats_in[NLAT-1];
+	top_left_in = point_spheq(minlon, maxlat);
+	top_right_in = point_spheq(maxlon, maxlat);
+	bottom_right_in = point_spheq(maxlon, minlat);
+	bottom_left_in = point_spheq(minlon, minlat);
+
+	point_spheq ring_verts[5] = {bottom_left_in, top_left_in, top_right_in, bottom_right_in, bottom_left_in};
+	ring_spheq new_ring;
+	bg::assign_points(new_ring, ring_verts);
+	SquareIDSet intersected_squares;
+	intersected_squares = _square_rtree.getRingIntersects(new_ring);
+
+
+	// for squares in the subset grabbed by rtree search, set values to those from input
+	SquareIDSet::const_iterator sidit;
+	for(sidit=intersected_squares.begin(); sidit !=intersected_squares.end(); sidit++){
+		std::map<UIndex, Square>::iterator sit = _squares.find(*sidit);
+		float square_lon = sit->second.xy()[0];
+		float square_lat = sit->second.xy()[1];
+
+		LatLonDepth new_lld = sit->second.lld();
+		new_lld.set_altitude( new_lld.altitude() + spline2dcalc(uplift_spline, square_lon, square_lat) );
+		sit->second.set_lld(new_lld);
+
+	}
+
+	return;
+}
+
 void tsunamisquares::Square::read_bathymetry(std::istream &in_stream) {
     std::stringstream   ss(next_line(in_stream));
 
