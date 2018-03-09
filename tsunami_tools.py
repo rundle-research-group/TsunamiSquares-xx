@@ -52,11 +52,7 @@ class simAnalyzer:
         
         save_file = self.save_file_prefix+"_grid.mp4"
         
-        #sim_data is expected to be a netcdf dataset
-        lons = np.array(self.sim_data.variables['longitude'])
-        lats = np.array(self.sim_data.variables['latitude'])
-        
-        # But keep the data from each time step in netCDF variable form, and slice into it as needed
+        # Keep the data from each time step in netCDF variable form, and slice into it as needed
         level_ncVar = self.sim_data.variables['level']
         height_ncVar = self.sim_data.variables['height']
         alt_ncVar = self.sim_data.variables['altitude']
@@ -88,12 +84,12 @@ class simAnalyzer:
         if not doBasemap:
             ax = fig.add_subplot(111)
             plt.xlim(self.minlon, self.maxlon)
-            plt.ylim(lat_min, lat_max)
-    #        ax.get_xaxis().get_major_formatter().set_useOffset(False)
-    #        ax.get_yaxis().get_major_formatter().set_useOffset(False)
+            plt.ylim(self.minlat, self.maxlat)
+            #ax.get_xaxis().get_major_formatter().set_useOffset(False)
+            #ax.get_yaxis().get_major_formatter().set_useOffset(False)
         else:
-            m = Basemap(projection='cyl',llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
-                    llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='h')
+            m = Basemap(projection='cyl', llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
+                        llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='h')
             m.drawmeridians(np.linspace(self.minlon, self.maxlon, num=5.0), labels=[0,0,0,1], linewidth=0)
             m.drawparallels(np.linspace(self.minlat, self.maxlat, num=5.0), labels=[1,0,0,0], linewidth=0)
             m.drawcoastlines(linewidth=0.5)
@@ -120,7 +116,7 @@ class simAnalyzer:
                 this_level  = level_ncVar[index]
                 this_height = height_ncVar[index]
                 this_alt    = alt_ncVar[index]
-                time   = self.times[index]
+                time        = self.times[index]
                 
                 # Masked array via conditional, don't color the land unless it has water on it
                 masked_data = np.ma.masked_where(this_height == 0.0000, this_level)            
