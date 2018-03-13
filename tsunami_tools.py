@@ -19,6 +19,7 @@ from netCDF4 import Dataset
 import os
 import read_ETOPO1
 import pandas as pd
+import json
 #import quakelib
 
 # --------------------------------------------------------------------------------
@@ -539,18 +540,15 @@ def bathy_topo_map(LLD_FILE):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()    
-    subparsers = parser.add_subparsers(title='mode', description='valid modes of usage', dest='mode')    
+    subparsers = parser.add_subparsers(title='mode', description='valid modes of usage', dest='mode')     
     
     # Arguments for generating bathymetry LLD files
     parser_gen = subparsers.add_parser('generate_bathy', help='generate interpolated bathymetry subset from NOAA\'s ETOPO1 dataset')
+    parser_gen.add_argument('--info_file', required=True, help='json containing regional and earthquake information')  
+    parser_gen.add_argument('--etopo1_file', required=False, default="~/Tsunami/ETOPO1/ETOPO1_Ice_g_gmt4.grd",
+            help="NOAA ETOPO1 combined topography and bathymetry file path")
     parser_gen.add_argument('--resolution', type=int, required=False, default=1,
             help="Resolution interpolation multiplier for NOAA topography")
-    parser_gen.add_argument('--lon_bounds', type=float, nargs=2, required=True,
-            help="Minimum and maximum longitude for bathymetry")            
-    parser_gen.add_argument('--lat_bounds', type=float, nargs=2, required=True,
-            help="Minimum and maximum latitude for bathymetry")
-    parser_gen.add_argument('--bathy_save_name', required=True,
-            help="File name for bathymetry")
     
     # Arguments for plotting bathymetry 
     parser_plot_bathy = subparsers.add_parser('plot_bathy', help='Plot previously-generated bathymetry LLD file')
@@ -559,14 +557,11 @@ if __name__ == "__main__":
     
     # Arguments for generating EQ surface displacement fields
     parser_field_eval = subparsers.add_parser('eq_field_eval', help='Generate surface displacement for a VQ fault model')
+    parser_field_eval.add_argument('--info_file', required=True, help='json containing regional and earthquake information')  
     parser_field_eval.add_argument('--lld_file', required=True,
             help="Path of bathymetry file")
-    parser_field_eval.add_argument('--vq_model_file', required=True,
-            help="Path to VQ fault model file")            
-    parser_field_eval.add_argument('--vq_event_file', required=False,
-            help="Path to VQ events file")
-    parser_field_eval.add_argument('--event_id', type=int, required=False,
-            help="Event ID for VQ simulated earthquake")
+    parser_field_eval.add_argument('--slip_from', choices=['vq_sim', 'uniform', 'slipmap'], required=True,
+                                  help="Sources of displacements")
     
     # Arguments for plotting eq displacement fields
     parser_field_plot = subparsers.add_parser('eq_field_plot', help='Plot a surface displacement field')
@@ -604,33 +599,22 @@ if __name__ == "__main__":
 #                              '--obs_file', '../historical_runups/tsrunup.csv', '--ymd', '2011', '3', '11'])
     args = parser.parse_args()
     
-
+    
     if args.mode == 'generate_bathy':
         
-        # ====== PARSE ETOPO1 FILE, SAVE SUBSET =====
-        ETOPO1_FILE = "ETOPO1/ETOPO1_Ice_g_gmt4.grd"
+        with open(args.info_file, "r") as open_info_file:
+            region_info = json.load(open_info_file)        
         
-        # TODO: store simulation boundaries, and any other relevant info, in json files        
-        # =================================
-        # SAVE_NAME = "bathymetry/ChannelIslands_x5_lld.txt"
-        # MIN_LAT = 33.75
-        # MAX_LAT = 34.3
-        # MIN_LON = -120.2
-        # MAX_LON = -119.2
-        # =================================
-        # SAVE_NAME = "bathymetry/Tohoku_x2_lld.txt"
-        # MIN_LAT = 34.7
-        # MAX_LAT = 41.6
-        # MIN_LON = 140.1
-        # MAX_LON = 144.5
-        # =================================
-        SAVE_NAME = args.bathy_save_name
+        # ====== PARSE ETOPO1 FILE, SAVE SUBSET =====
+        ETOPO1_FILE = "../ETOPO1/ETOPO1_Ice_g_gmt4.grd"
+        
+        SAVE_NAME = os.path.join(os.path.split(args.info_file)[0], 'bathymetry', region_info['name']+'_x'+str(FACTOR)+'_lld.txt')
         FACTOR  = args.resolution
         
-        MIN_LAT = args.lat_bounds[0]
-        MAX_LAT = args.lat_bounds[1]
-        MIN_LON = args.lon_bounds[0]
-        MAX_LON = args.lon_bounds[1]
+        MIN_LAT = region_info['lat_bounds'][0]
+        MAX_LAT = region_info['lat_bounds'][1]
+        MIN_LON = region_info['lon_bounds'][0]
+        MAX_LON = region_info['lon_bounds'][1]
 
         # --- write grid ------
         # TODO: transition from txt files to netCDF files containing bathymetry data, possibly shift to reading directly from ETOPO1 in c++ sim
@@ -644,30 +628,26 @@ if __name__ == "__main__":
     
     if args.mode == 'eq_field_eval':
         
+        with open(args.info_file, "r") as open_info_file:
+            region_info = json.load(open_info_file)          
+        
         VQ_DIR = "~/VirtQuake/"
         
-        # =================================
-        # LLD_NAME = "bathymetry/Channel_Islands_largest_subset_lld.txt"
-        # MODEL     = "~/VirtQuake/UCERF3_reindexed/Model/UCERF3_VQmeshed_from_EQSIM_ReIndexed_AseismicCut_0-11_taper_drops0.9.h5"
-        # EVENTS    = "~/VirtQuake/UCERF3_reindexed/VQ_runs/events_UCERF3_ReIndexed_AseismicCut_0-11_taper_drops0-9_50kyr_dyn0-2_greenLimits.h5"
-        # EVID      = 39951
-        # =================================
-        # LLD_NAME = "bathymetry/Tohoku_x1_lld.txt"
-        # MODEL     = "~/VirtQuake/Tohoku/simple_Tohoku_50000m_drops0.txt"
-        # EVENTS    = "~/VirtQuake/Tohoku/events_Tohoku_100kyr_drops0_dyn0-2_greenLimits.h5"
-        # EVID      = 1196
-        # =================================        
+        system_command = "python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF --horizontal --model_file {} --lld_file {}".format(region_info['model_file'], args.lld_file)
         
-        system_command = "python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF --horizontal --model_file {} --lld_file {}".format(args.vq_model_file, args.lld_file)
-        
-        if args.vq_event_file or args.event_id:
-            if not args.vq_event_file or not args.event_id:
-                raise BaseException("Must specify both an event file and an event ID")
+        if args.slip_from == 'vq_sim':
+            if not region_info['event_file'] or not region_info['event_id']:
+                raise BaseException("Must specify both an event file and an event ID in info file")
                 
-            system_command += " --event_file {} --event_id {}".format(args.vq_event_file, args.event_id)
+            system_command += " --event_file {} --event_id {}".format(region_info['event_file'], region_info['event_id'])
             
-        else:
-            system_command += " --uniform_slip 10"       
+        elif args.slip_from == 'uniform':
+            system_command += " --uniform_slip 10"      
+        
+        elif args.slip_from == 'slipmap':
+            if not region_info['slip_map']:
+                raise BaseException("Must specify slipmap file")
+            system_command += " --slipmap_file {}".format(region_info['slip_map'])   
            
         os.system(system_command)
        
