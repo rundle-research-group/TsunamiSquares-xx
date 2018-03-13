@@ -161,7 +161,7 @@ int main (int argc, char **argv) {
 				this_world.gaussianPile(gauss_height, gauss_std);
 				break;
 		case 4: std::cout << "Reading initial conditions from saved state file" << std::endl;
-				this_world.read_sim_state_netCDF(initialstate_file_name, flatten_bool);
+				this_world.read_sim_state_netCDF(initialstate_file_name);
 				break;
 		default: std::cout << "Initial conditions didn't match any known.  Exiting" << std::endl;
 				 return 0;
@@ -267,7 +267,7 @@ int main (int argc, char **argv) {
 
 
     if(write_sim_state){
-    	this_world.write_sim_state_netCDF(finalstate_file_name);
+    	this_world.write_sim_state_netCDF(finalstate_file_name, time);
     }
 
 

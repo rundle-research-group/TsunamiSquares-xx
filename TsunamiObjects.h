@@ -525,7 +525,7 @@ namespace tsunamisquares {
             void write_square_ascii(std::ostream &out_stream, const double &time, const UIndex &square_id) const;
             void initilize_netCDF_file(const std::string &file_name);
             void append_netCDF_file(const std::string &file_name, const int &current_step, const float &time);
-            void write_sim_state_netCDF(const std::string &file_name);
-            void read_sim_state_netCDF(const std::string &file_name, const bool &flatten_bool);
+            void write_sim_state_netCDF(const std::string &file_name, const float &this_time);
+            void read_sim_state_netCDF(const std::string &file_name);
     };
 }

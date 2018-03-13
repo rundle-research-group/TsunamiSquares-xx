@@ -1663,7 +1663,7 @@ void tsunamisquares::World::initilize_netCDF_file(const std::string &file_name){
 	NcVar levelVar = dataFile.addVar("level", ncFloat, dimVector);
 	NcVar heightVar = dataFile.addVar("height", ncFloat, dimVector);
 	NcVar altVar = dataFile.addVar("altitude", ncFloat, dimVector);
-	NcVar velHorVar = dataFile.addVar("horizonal velocity", ncFloat, dimVector);
+	NcVar velHorVar = dataFile.addVar("horizontal velocity", ncFloat, dimVector);
 	NcVar velVertVar = dataFile.addVar("vertical velocity", ncFloat, dimVector);
 
 	// Define units attributes for coordinate vars. This attaches a
@@ -1693,7 +1693,7 @@ void tsunamisquares::World::append_netCDF_file(const std::string &file_name, con
 	NcVar levelVar = dataFile.getVar("level");
 	NcVar heightVar = dataFile.getVar("height");
 	NcVar altVar = dataFile.getVar("altitude");
-	NcVar velHorVar = dataFile.getVar("horizonal velocity");
+	NcVar velHorVar = dataFile.getVar("horizontal velocity");
 	NcVar velVertVar = dataFile.getVar("vertical velocity");
 
 	float time_out[1];
@@ -1741,7 +1741,7 @@ void tsunamisquares::World::append_netCDF_file(const std::string &file_name, con
 	velVertVar.putVar(startp,countp,velVert_out);
 }
 
-void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name){
+void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name, const float &this_time){
 	std::map<UIndex, Square>::const_iterator sit;
 	// We are writing 2D data, a NLAT x NLON lat-lon grid
 
@@ -1751,6 +1751,7 @@ void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name)
 
 	// For the units attributes.
 	std::string  UNITS = "units";
+	std::string  TIME_UNITS = "seconds";
 	std::string  LENGTH_UNITS = "meters";
 	std::string  VELOCITY_UNITS = "meters/second";
 	std::string  LAT_UNITS = "degrees_north";
@@ -1759,12 +1760,14 @@ void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name)
 	// We will write latitude and longitude fields.
 	// Populate the data arrays from world data
 	float lats[NLAT],lons[NLON];
+	float time_out[1];
 	float level_out[NLAT][NLON];
 	float height_out[NLAT][NLON];
 	float alt_out[NLAT][NLON];
 	float velocity_horiz_out[NLAT][NLON];
 	float velocity_vert_out[NLAT][NLON];
 
+	time_out[0] = this_time;
 	for(sit=_squares.begin(); sit!=_squares.end(); sit++){
 		int lat_index = floor(sit->first / double(NLON));
 		int lon_index = sit->first % NLON;
@@ -1779,27 +1782,30 @@ void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name)
 		velocity_vert_out[lat_index][lon_index] = sit->second.velocity()[1];
 	}
 
-
 	// Create the file.
 	NcFile dataFile(file_name, NcFile::replace);
 
 	// Define the dimensions. NetCDF will hand back an ncDim object for
 	// each.
+	NcDim timeDim = dataFile.addDim("time"); //unlimited dimension
 	NcDim latDim = dataFile.addDim("latitude", NLAT);
 	NcDim lonDim = dataFile.addDim("longitude", NLON);
 
 	// Define the coordinate variables.
+	NcVar timeVar = dataFile.addVar("time", ncFloat, timeDim);
 	NcVar latVar = dataFile.addVar("latitude", ncFloat, latDim);
 	NcVar lonVar = dataFile.addVar("longitude", ncFloat, lonDim);
 
 	// Define units attributes for coordinate vars. This attaches a
 	// text attribute to each of the coordinate variables, containing
 	// the units.
+	timeVar.putAtt(UNITS, TIME_UNITS);
 	latVar.putAtt(UNITS, LAT_UNITS);
 	lonVar.putAtt(UNITS, LON_UNITS);
 
 	//Dimension vector for correctly sizing data variables
 	std::vector<NcDim> dimVector;
+	dimVector.push_back(timeDim);
 	dimVector.push_back(latDim);
 	dimVector.push_back(lonDim);
 
@@ -1823,16 +1829,22 @@ void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name)
 	latVar.putVar(lats);
 	lonVar.putVar(lons);
 
-
-	std::vector<size_t> startp, countp;
+	std::vector<size_t> starttime, counttime, startp, countp;
 	// Starting index of data to be written.  Arrays at each time step start at [timeStep, 0, 0]
+	starttime.push_back(0);
+
+	startp.push_back(0);
 	startp.push_back(0);
 	startp.push_back(0);
 
-	// Size of array to be written.  nlats and nlons in those dims.
+	// Size of array to be written.  One time step, nlats and nlons in those dims.
+	counttime.push_back(1);
+
+	countp.push_back(1);
 	countp.push_back(NLAT);
 	countp.push_back(NLON);
 
+	timeVar.putVar(starttime, counttime, time_out);
 	levelVar.putVar(startp,countp,level_out);
 	heightVar.putVar(startp,countp,height_out);
 	altVar.putVar(startp,countp,alt_out);
@@ -1840,11 +1852,12 @@ void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name)
 	velVertVar.putVar(startp,countp,velocity_vert_out);
 }
 
-void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, const bool &flatten_bool){
 
+void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name){
 	// Read in NetCDF
 	NcFile dataFile(file_name, NcFile::read);
 
+	long NTIME = dataFile.getDim("time").getSize();
 	long NLAT = dataFile.getDim("latitude").getSize();
 	long NLON = dataFile.getDim("longitude").getSize();
 
@@ -1857,7 +1870,8 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 	float velocity_vert_in[NLAT][NLON];
 
 	// Get the variables
-	NcVar latVar, lonVar;
+	NcVar timeVar, latVar, lonVar;
+	timeVar = dataFile.getVar("time");
 	latVar = dataFile.getVar("latitude");
 	lonVar = dataFile.getVar("longitude");
 	latVar.getVar(lats_in);
@@ -1869,12 +1883,24 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 	altVar = dataFile.getVar("altitude");
 	velHorizVar = dataFile.getVar("horizontal velocity");
 	velVertVar = dataFile.getVar("vertical velocity");
-	levelVar.getVar(level_in);
-	heightVar.getVar(height_in);
-	altVar.getVar(alt_in);
-	velHorizVar.getVar(velocity_horiz_in);
-	velVertVar.getVar(velocity_vert_in);
 
+	// corner location and edge size vectors for slicing into last time step of netCDF vars
+	std::vector<size_t> startp, countp;
+
+	startp.push_back(NTIME-1);
+	startp.push_back(0);
+	startp.push_back(0);
+
+	countp.push_back(1);
+	countp.push_back(NLAT);
+	countp.push_back(NLON);
+
+	// Slice into the netCDF vars and store them in the arrays
+	levelVar.getVar(startp, countp, level_in);
+	heightVar.getVar(startp, countp, height_in);
+	altVar.getVar(startp, countp, alt_in);
+	velHorizVar.getVar(startp, countp, velocity_horiz_in);
+	velVertVar.getVar(startp, countp, velocity_vert_in);
 
 	/* Make 2d interpolation from each input arrays (from netCDF file)
 	 *
@@ -1906,7 +1932,7 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 		}
 	}
 
-	// build splines
+	// Build splines
 	spline2dinterpolant level_spline, height_spline, alt_spline, velHor_spline, velVert_spline;
 	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, level_algarr,  1, level_spline);
 	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, height_algarr,  1, height_spline);
@@ -1914,7 +1940,7 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, velHor_algarr,  1, velHor_spline);
 	spline2dbuildbicubicv(lon_algarr, NLON, lat_algarr, NLAT, velVert_algarr, 1, velVert_spline);
 
-	//Do rtree grab of all squares that need their initial conditions set
+	// Do rtree grab of all squares that need their initial conditions set
 	point_spheq top_left_in, top_right_in, bottom_right_in, bottom_left_in;
 	float minlon = lons_in[0];
 	float maxlon = lons_in[NLON-1];
@@ -1932,19 +1958,17 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name, 
 	intersected_squares = _square_rtree.getRingIntersects(new_ring);
 
 
-	// for squares in the subset grabbed by rtree search, set values to those from input
+	// For squares in the subset grabbed by rtree search, set values to those from input
 	SquareIDSet::const_iterator sidit;
 	for(sidit=intersected_squares.begin(); sidit !=intersected_squares.end(); sidit++){
 		std::map<UIndex, Square>::iterator sit = _squares.find(*sidit);
 		float square_lon = sit->second.xy()[0];
 		float square_lat = sit->second.xy()[1];
 
-
-		if(!flatten_bool){
-			LatLonDepth new_lld = sit->second.lld();
-			new_lld.set_altitude( spline2dcalc(alt_spline, square_lon, square_lat) );
-			sit->second.set_lld(new_lld);
-		}
+		// Set square altitude
+		LatLonDepth new_lld = sit->second.lld();
+		new_lld.set_altitude( spline2dcalc(alt_spline, square_lon, square_lat) );
+		sit->second.set_lld(new_lld);
 
 		// Most important thing for hazard estimate is level of water, not how deep the column is.  So get appropriate height from level.
 		float heighttoset = spline2dcalc(level_spline, square_lon, square_lat) - spline2dcalc(alt_spline, square_lon, square_lat);
