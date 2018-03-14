@@ -1267,15 +1267,16 @@ void tsunamisquares::World::computeNeighbors(void) {
         bottom_left  = bottom-1;
         bottom_right = bottom+1;
 
-        this_lat      = sit->second.xy()[1];
-        this_lon      = sit->second.xy()[0];
-        isMinLat      = (this_lat == min_lat());
-        isMaxLat      = (this_lat == max_lat());
-        isMinLon      = (this_lon == min_lon());
-        isMaxLon      = (this_lon == max_lon());
+        int this_lon_index = this_id%num_lons();
+        int this_lat_index = (this_id-(this_id%num_lons()))%num_lats();
+
+        isMinLat      = (this_lat_index == 0);
+        isMaxLat      = (this_lat_index == num_lats()-1);
+        isMinLon      = (this_lon_index == 0);
+        isMaxLon      = (this_lon_index == num_lons()-1);
 
         // Handle the corner and edge cases
-        if (! (isMaxLat || isMaxLon || isMinLon || isMinLat)) {
+        if (!(isMaxLat || isMaxLon || isMinLon || isMinLat)) {
             // Interior squares
             sit->second.set_right(right);
             sit->second.set_left(left);
