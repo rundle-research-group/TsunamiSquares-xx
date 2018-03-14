@@ -1248,14 +1248,14 @@ void tsunamisquares::World::indexNeighbors() {
 
 void tsunamisquares::World::computeNeighbors(void) {
     std::map<UIndex, Square>::iterator                                  sit;
-    double                                              this_lat, this_lon; 
+    double                                              this_lat, this_lon;
     bool                                    isMinLat, isMinLon, isMaxLat, isMaxLon;
     UIndex                       this_id, left, right, top_right, top_left;
     UIndex                          bottom_left, bottom_right, top, bottom;
-    
+
     // Use the in-place element numbering to find the IDs of the neighboring squares.
     // Must handle the border and corner cases and not include off-model neighbors.
-    
+
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         this_id      = sit->first;
         left         = this_id-1;
@@ -1266,14 +1266,14 @@ void tsunamisquares::World::computeNeighbors(void) {
         top_right    = top+1;
         bottom_left  = bottom-1;
         bottom_right = bottom+1;
-        
+
         this_lat      = sit->second.xy()[1];
         this_lon      = sit->second.xy()[0];
         isMinLat      = (this_lat == min_lat());
         isMaxLat      = (this_lat == max_lat());
         isMinLon      = (this_lon == min_lon());
         isMaxLon      = (this_lon == max_lon());
-        
+
         // Handle the corner and edge cases
         if (! (isMaxLat || isMaxLon || isMinLon || isMinLat)) {
             // Interior squares

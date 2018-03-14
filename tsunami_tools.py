@@ -606,10 +606,10 @@ if __name__ == "__main__":
             region_info = json.load(open_info_file)        
         
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET =====
-        ETOPO1_FILE = "../ETOPO1/ETOPO1_Ice_g_gmt4.grd"
+        ETOPO1_FILE = "../../ETOPO1/ETOPO1_Ice_g_gmt4.grd"
         
-        SAVE_NAME = os.path.join(os.path.split(args.info_file)[0], 'bathymetry', region_info['name']+'_x'+str(FACTOR)+'_lld.txt')
         FACTOR  = args.resolution
+        SAVE_NAME = os.path.join(os.path.split(args.info_file)[0], 'bathymetry', region_info['name']+'_x'+str(FACTOR)+'_lld.txt')
         
         MIN_LAT = region_info['lat_bounds'][0]
         MAX_LAT = region_info['lat_bounds'][1]
