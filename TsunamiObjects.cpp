@@ -1248,14 +1248,14 @@ void tsunamisquares::World::indexNeighbors() {
 
 void tsunamisquares::World::computeNeighbors(void) {
     std::map<UIndex, Square>::iterator                                  sit;
-    double                                              this_lat, this_lon; 
+    double                                              this_lat, this_lon;
     bool                                    isMinLat, isMinLon, isMaxLat, isMaxLon;
     UIndex                       this_id, left, right, top_right, top_left;
     UIndex                          bottom_left, bottom_right, top, bottom;
-    
+
     // Use the in-place element numbering to find the IDs of the neighboring squares.
     // Must handle the border and corner cases and not include off-model neighbors.
-    
+
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         this_id      = sit->first;
         left         = this_id-1;
@@ -1266,14 +1266,14 @@ void tsunamisquares::World::computeNeighbors(void) {
         top_right    = top+1;
         bottom_left  = bottom-1;
         bottom_right = bottom+1;
-        
+
         this_lat      = sit->second.xy()[1];
         this_lon      = sit->second.xy()[0];
         isMinLat      = (this_lat == min_lat());
         isMaxLat      = (this_lat == max_lat());
         isMinLon      = (this_lon == min_lon());
         isMaxLon      = (this_lon == max_lon());
-        
+
         // Handle the corner and edge cases
         if (! (isMaxLat || isMaxLon || isMinLon || isMinLat)) {
             // Interior squares
@@ -1988,7 +1988,7 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name){
 
 
 
-int tsunamisquares::World::read_bathymetry(const std::string &file_name) {
+int tsunamisquares::World::read_bathymetry_txt(const std::string &file_name) {
     std::ifstream   in_file;
     UIndex          i, j, num_squares, num_vertices, num_lats, num_lons;
     LatLonDepth     min_latlon, max_latlon;
@@ -2044,6 +2044,76 @@ int tsunamisquares::World::read_bathymetry(const std::string &file_name) {
     calcMaxDepth();
 
     return 0;
+}
+
+int tsunamisquares::World::read_bathymetry_netCDF(const std::string &file_name) {
+	// Clear the world first to avoid incorrectly mixing indices
+	clear();
+
+	// Read in NetCDF
+	NcFile dataFile(file_name, NcFile::read);
+
+	long num_lats = dataFile.getDim("latitude").getSize();
+	long num_lons = dataFile.getDim("longitude").getSize();
+
+	// These will hold our data.
+	float lats_in[num_lats], lons_in[num_lons];
+	float alt_in[num_lats][num_lons];
+
+	// Get the variables
+	NcVar latVar, lonVar;
+	latVar = dataFile.getVar("latitude");
+	lonVar = dataFile.getVar("longitude");
+	latVar.getVar(lats_in);
+	lonVar.getVar(lons_in);
+
+	NcVar altVar;
+	altVar = dataFile.getVar("altitude");
+	altVar.getVar(alt_in);
+
+	// Set metadata
+	float dlat = abs(lats_in[1]-lats_in[0]);
+	float dlon = abs(lons_in[1]-lons_in[0]);
+	_num_latitudes = num_lats;
+	_num_longitudes = num_lons;
+	_dlat = dlat;
+	_dlon = dlon;
+
+	// Read squares, populate world rtree and square map.
+	for(int j=0; j<num_lats; j++){
+		for(int i=0; i<num_lons; i++){
+			Square     new_square;
+			new_square.set_id(j*num_lons+i);
+
+			// Do all the stuff that Square::read_bathymetry() does
+			LatLonDepth new_lld;
+			new_lld.set_lon(lons_in[i]);
+			new_lld.set_lat(lats_in[j]);
+			new_lld.set_altitude(alt_in[j][i]);
+			new_square.set_lld(new_lld);
+
+			new_square.set_box(dlon, dlat);
+			_square_rtree.addPoint(new_square.xy(), new_square.id());
+			_squares.insert(std::make_pair(new_square.id(), new_square));
+		}
+	}
+
+	// Get world lld bounds
+    LatLonDepth     min_latlon, max_latlon;
+	get_bounds(min_latlon, max_latlon);
+	min_latlon.set_altitude(0); //Why is this here?
+
+	// Keep track of Lat/Lon bounds in the World
+	_min_lat = min_latlon.lat();
+	_min_lon = min_latlon.lon();
+	_max_lat = max_latlon.lat();
+	_max_lon = max_latlon.lon();
+
+	// Find max depth and min cell spacing
+	calcMinSpacing();
+	calcMaxDepth();
+
+	return 0;
 }
 
 void tsunamisquares::World::populate_wet_rtree(void){

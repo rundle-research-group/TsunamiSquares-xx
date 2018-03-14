@@ -464,7 +464,6 @@ namespace tsunamisquares {
             void printVertex(const UIndex vertex_id);
             void info(void) const;
             
-            int read_bathymetry(const std::string &file_name);
             void populate_wet_rtree(void);
             
             void get_bounds(LatLonDepth &minimum, LatLonDepth &maximum) const;
@@ -519,6 +518,8 @@ namespace tsunamisquares {
             void setSquareAccel(const UIndex &square_id, const Vec<2> &new_accel);
             void setSquareHeight(const UIndex &square_id, const double &new_height);
             // ======= File I/O ====================
+            int read_bathymetry_txt(const std::string &file_name);
+            int read_bathymetry_netCDF(const std::string &file_name);
             int deformFromFile_txt(const std::string &file_name);
             void deformFromFile_netCDF(const std::string &file_name);
             int write_file_kml(const std::string &file_name);

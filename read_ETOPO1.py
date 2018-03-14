@@ -117,8 +117,26 @@ def grab_ETOPO1_subset_interpolated(file_name, min_lat, max_lat, min_lon, max_lo
     return 0,0,0
 
     
+def write_grid_netCDF(out_file_name, lats, lons, bathy):
     
+    out_dataset = Dataset(out_file_name, 'w', format='NETCDF4')  
     
+    lons = np.unique(lons)
+    lats = np.unique(lats)
+    
+    out_dataset.createDimension('latitude', np.size(lats))
+    out_dataset.createDimension('longitude', np.size(lons))
+    
+    lats_data   = out_dataset.createVariable('latitude',  'f4', ('latitude',))
+    lons_data   = out_dataset.createVariable('longitude', 'f4', ('longitude',))
+    altitude_data = out_dataset.createVariable('altitude',    'f4', ('latitude','longitude'))
+    
+    lats_data[:]       = lats
+    lons_data[:]       = lons
+    altitude_data[:,:] = bathy
+    
+    out_dataset.close()
+    print("output written to {}".format(out_file_name))
     
 
     

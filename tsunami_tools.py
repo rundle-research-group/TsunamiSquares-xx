@@ -546,9 +546,11 @@ if __name__ == "__main__":
     parser_gen = subparsers.add_parser('generate_bathy', help='generate interpolated bathymetry subset from NOAA\'s ETOPO1 dataset')
     parser_gen.add_argument('--info_file', required=True, help='json containing regional and earthquake information')  
     parser_gen.add_argument('--etopo1_file', required=False, default="~/Tsunami/ETOPO1/ETOPO1_Ice_g_gmt4.grd",
-            help="NOAA ETOPO1 combined topography and bathymetry file path")
+                            help="NOAA ETOPO1 combined topography and bathymetry file path")
     parser_gen.add_argument('--resolution', type=int, required=False, default=1,
-            help="Resolution interpolation multiplier for NOAA topography")
+                            help="Resolution interpolation multiplier for NOAA topography")
+    parser_gen.add_argument('--text', action="store_true", required=False,
+                            help="Store bathymetry as a text lld file")
     
     # Arguments for plotting bathymetry 
     parser_plot_bathy = subparsers.add_parser('plot_bathy', help='Plot previously-generated bathymetry LLD file')
@@ -606,10 +608,19 @@ if __name__ == "__main__":
             region_info = json.load(open_info_file)        
         
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET =====
-        ETOPO1_FILE = "../ETOPO1/ETOPO1_Ice_g_gmt4.grd"
-        
-        SAVE_NAME = os.path.join(os.path.split(args.info_file)[0], 'bathymetry', region_info['name']+'_x'+str(FACTOR)+'_lld.txt')
+        ETOPO1_FILE = args.etopo1_file        
         FACTOR  = args.resolution
+        
+        save_dir = os.path.join(os.path.split(args.info_file)[0], 'bathymetry')
+        if args.text:
+            save_name = region_info['name']+'_x'+str(FACTOR)+'_lld.txt'
+        else:
+            save_name = region_info['name']+'_x'+str(FACTOR)+'_lld.nc'
+        
+        if not os.path.isdir(save_dir):
+            os.makedirs(save_dir)
+        
+        SAVE_PATH = os.path.join(save_dir, save_name)
         
         MIN_LAT = region_info['lat_bounds'][0]
         MAX_LAT = region_info['lat_bounds'][1]
@@ -617,9 +628,12 @@ if __name__ == "__main__":
         MAX_LON = region_info['lon_bounds'][1]
 
         # --- write grid ------
-        # TODO: transition from txt files to netCDF files containing bathymetry data, possibly shift to reading directly from ETOPO1 in c++ sim
+        # TODO: transition from txt files to netCDF files containing bathymetry data
         lats, lons, bathy = read_ETOPO1.grab_ETOPO1_subset_interpolated(ETOPO1_FILE, min_lat=MIN_LAT, max_lat=MAX_LAT, min_lon=MIN_LON, max_lon=MAX_LON, factor=FACTOR)
-        read_ETOPO1.write_grid(SAVE_NAME,lats,lons,bathy)
+        if args.text:
+            read_ETOPO1.write_grid(SAVE_PATH, lats, lons, bathy)
+        else:
+            read_ETOPO1.write_grid_netCDF(SAVE_PATH, lats, lons, bathy)
         
     
     if args.mode == 'plot_bathy':
