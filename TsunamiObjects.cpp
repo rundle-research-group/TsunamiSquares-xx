@@ -402,7 +402,7 @@ void tsunamisquares::World::applyDiffusion(void){
 		}
 
 	}
-	overdrawn_volume = abs(overdrawn_volume);
+	overdrawn_volume = fabs(overdrawn_volume);
 	// Scale all the water to conserve mass after we fixed negative volumes
 	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
 		sit->second.set_height( sit->second.height()*total_volume()/(total_volume() - overdrawn_volume) );
@@ -471,8 +471,8 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			new_velo = current_velo + current_accel*ldt;
 
 			//Catch velocities that run away due to bad local momentum conservation, etc.
-			if(new_velo.mag()>sqrt(abs(G*max_depth()))){
-				new_velo = new_velo*sqrt(abs(G*max_depth()))/new_velo.mag();
+			if(new_velo.mag()>sqrt(fabs(G*max_depth()))){
+				new_velo = new_velo*sqrt(fabs(G*max_depth()))/new_velo.mag();
 			}
 
 
@@ -2074,8 +2074,8 @@ int tsunamisquares::World::read_bathymetry_netCDF(const std::string &file_name) 
 	altVar.getVar(alt_in);
 
 	// Set metadata
-	float dlat = abs(lats_in[1]-lats_in[0]);
-	float dlon = abs(lons_in[1]-lons_in[0]);
+	float dlat = fabs(lats_in[1]-lats_in[0]);
+	float dlon = fabs(lons_in[1]-lons_in[0]);
 	_num_latitudes = num_lats;
 	_num_longitudes = num_lons;
 	_dlat = dlat;

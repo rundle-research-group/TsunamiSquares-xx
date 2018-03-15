@@ -123,7 +123,7 @@ int main (int argc, char **argv) {
     // Read in the bathymetry data TODO: remove max depth calc from bathy reading and move to after the initial condition step
     this_world.clear();
     std::cout << std::endl << "Reading..."   << bathy_file.c_str() << std::endl;
-    this_world.read_bathymetry_txt(bathy_file.c_str());
+    this_world.read_bathymetry_netCDF(bathy_file.c_str());
 
     // Flatten the bottom for simple simulation test cases, do not do this for tsunami simulations
 	if(flatten_bool){

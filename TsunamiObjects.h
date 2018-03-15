@@ -378,14 +378,6 @@ namespace tsunamisquares {
 			};
 
             void read_bathymetry(std::istream &in_stream);
-
-//            void add_neighbor(const UIndex &neighbor_id) {
-//                _neighbors.insert(neighbor_id);
-//            };
-//            
-//            SquareIDSet get_neighbors(void) {
-//                return _neighbors;
-//            };
     
     };
     
