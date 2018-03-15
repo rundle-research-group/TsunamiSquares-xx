@@ -608,8 +608,9 @@ if __name__ == "__main__":
             region_info = json.load(open_info_file)        
         
         # ====== PARSE ETOPO1 FILE, SAVE SUBSET =====
-        ETOPO1_FILE = args.etopo1_file        
+        ETOPO1_FILE = args.etopo1_file
         FACTOR  = args.resolution
+        SAVE_NAME = os.path.join(os.path.split(args.info_file)[0], 'bathymetry', region_info['name']+'_x'+str(FACTOR)+'_lld.txt')
         
         save_dir = os.path.join(os.path.split(args.info_file)[0], 'bathymetry')
         if args.text:
