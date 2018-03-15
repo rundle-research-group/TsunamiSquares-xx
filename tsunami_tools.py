@@ -126,7 +126,7 @@ class simAnalyzer:
     
                 # Plot the surface for this time step
                 if surface is None:
-                    ax.imshow(masked_data, cmap=cmap,origin='lower', norm=norm, extent=[self.minlon, self.maxlon, self.maxlat, self.minlat], interpolation='none')
+                    ax.imshow(masked_data, cmap=cmap, origin='lower', norm=norm, extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='none')
                 else:
                     surface.set_data(masked_data)
                     
@@ -224,7 +224,7 @@ class simAnalyzer:
         # Now create an array to match the simulated inundation array showing observed inundations
         obs_histogram, xedge, yedge = np.histogram2d(inund_df.LONGITUDE, inund_df.LATITUDE, bins=[len(self.lons), len(self.lats)], 
                                                           range=[[self.minlon-self.dlon/2.0, self.maxlon+self.dlon/2.0], [self.minlat-self.dlat/2.0, self.maxlat+self.dlat/2.0]])
-        obs_histogram = np.flipud(obs_histogram.T)
+        #TODO: figure out right orientation of array obs_histogram = np.flipud(obs_histogram.T)
         alt_ncVar = self.sim_data.variables['altitude']
         self.obs_inundation_array = np.ma.masked_where(alt_ncVar[0] < 0, (obs_histogram>0))
 
@@ -251,7 +251,7 @@ class simAnalyzer:
 
         cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['gray', 'maroon', 'blue', 'lime'], N=4)
         
-        map_ax = m.imshow(self.all_inundation_results, origin='upper', extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='nearest', cmap=cm)
+        map_ax = m.imshow(self.all_inundation_results, origin='lower', extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='nearest', cmap=cm)
         
         cbar = fig.colorbar(map_ax, ticks=[3/8., 9/8., 15/8., 21/8.])
         cbar.ax.set_yticklabels(['Dry', 'Miss', 'False\nAlarm', 'Success'])
