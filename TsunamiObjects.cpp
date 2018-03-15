@@ -1260,20 +1260,20 @@ void tsunamisquares::World::computeNeighbors(void) {
         this_id      = sit->first;
         left         = this_id-1;
         right        = this_id+1;
-        top          = this_id-num_lons();
-        bottom       = this_id+num_lons();
+        top          = this_id+num_lons();
+        bottom       = this_id-num_lons();
         top_left     = top-1;
         top_right    = top+1;
         bottom_left  = bottom-1;
         bottom_right = bottom+1;
 
         int this_lon_index = this_id%num_lons();
-        int this_lat_index = (this_id-(this_id%num_lons()))%num_lats();
+        int this_lat_index = ((this_id-(this_id%num_lons()))/num_lons())%num_lats();
 
-        isMinLat      = (this_lat_index == 0);
-        isMaxLat      = (this_lat_index == num_lats()-1);
         isMinLon      = (this_lon_index == 0);
         isMaxLon      = (this_lon_index == num_lons()-1);
+        isMinLat      = (this_lat_index == 0);
+        isMaxLat      = (this_lat_index == num_lats()-1);
 
         // Handle the corner and edge cases
         if (!(isMaxLat || isMaxLon || isMinLon || isMinLat)) {
@@ -1357,6 +1357,7 @@ void tsunamisquares::World::computeNeighborCoords(void) {
 
         neighborIDs = sit->second.get_neighbors_and_self();
     	for(nit=neighborIDs.begin(); nit!=neighborIDs.end(); nit++){
+
     		Vec<2> neighpos = square(*nit).xy();
 
     		double xdiff = (neighpos[0] - thispos[0]);
