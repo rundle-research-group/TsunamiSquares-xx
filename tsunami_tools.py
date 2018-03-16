@@ -479,28 +479,48 @@ def plot_eq_disps_horiz(disp_file):
 def bathy_topo_map(LLD_FILE):
     
     save_file = os.path.splitext(LLD_FILE)[0]+'_bathymap.png'    
+    extension = os.path.splitext(LLD_FILE)[1]
     
     # Read bathymetry/topography data
-    data = np.genfromtxt(LLD_FILE, dtype=[('lat','f8'),('lon','f8'), ('z','f8')],skip_header=3)
+    if extension == ".txt":
+        data = np.genfromtxt(LLD_FILE, dtype=[('lat','f8'),('lon','f8'), ('z','f8')],skip_header=3)
 
-    # Data ranges
-    lon_min,lon_max = data['lon'].min(),data['lon'].max()
-    lat_min,lat_max = data['lat'].min(),data['lat'].max()
+        # Reshape into matrices
+        Ncols = len(np.unique(data['lon']))
+        Nrows = len(np.unique(data['lat']))
+        
+        X = data['lon'].reshape(Nrows, Ncols)
+        Y = data['lat'].reshape(Nrows, Ncols)
+        Z = data['z'].reshape(Nrows, Ncols)
+
+        # Data ranges
+        lon_min,lon_max = data['lon'].min(),data['lon'].max()
+        lat_min,lat_max = data['lat'].min(),data['lat'].max()
+        
+    elif extension == ".nc":
+        data = Dataset(LLD_FILE, 'r')
+
+        # Reshape into matrices
+        Ncols = len(data['longitude'][:])
+        Nrows = len(data['latitude'][:])
+        
+        X, Y = np.meshgrid(data['longitude'][:], data['latitude'][:])
+        Z = data['altitude'][::]
+        
+        # Data ranges
+        lon_min, lon_max = data['longitude'][:].min(), data['longitude'][:].max()
+        lat_min, lat_max = data['latitude'][:].min(), data['latitude'][:].max()
+        
+    else:
+        raise BaseException("Bathymetry file is an unsupported file type")
+    
     mean_lat = 0.5*(lat_min + lat_max)
     mean_lon = 0.5*(lon_min + lon_max)
     lon_range = lon_max - lon_min
     lat_range = lat_max - lat_min
     cmap = plt.get_cmap('terrain')
-    interp = 'none'
+    interp = 'nearest'
     framelabelfont = mfont.FontProperties(family='Arial', style='normal', variant='normal', size=14)
-    
-    # Reshape into matrices
-    Ncols = len(np.unique(data['lon']))
-    Nrows = len(np.unique(data['lat']))
-    
-    X = data['lon'].reshape(Nrows, Ncols)
-    Y = data['lat'].reshape(Nrows, Ncols)
-    Z = data['z'].reshape(Nrows, Ncols)
         
     # catch any nan values
     masked_data = np.ma.masked_invalid(Z)
@@ -530,7 +550,7 @@ def bathy_topo_map(LLD_FILE):
         
     # Plot the contours
     #m.contourf(X, Y, masked_data, 100, cmap=cmap, norm=norm, extend='both', zorder=1)
-    m.ax.imshow(masked_data,cmap=cmap,origin='lower',norm=norm,extent=[lon_min,lon_max,lat_max,lat_min],interpolation=interp)
+    m.ax.imshow(masked_data, cmap=cmap, origin='lower', norm=norm, extent=[lon_min, lon_max, lat_min, lat_max], interpolation=interp)
 
     plt.savefig(save_file,dpi=100)
     print("Saved to "+save_file)
