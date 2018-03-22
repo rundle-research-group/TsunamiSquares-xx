@@ -510,6 +510,7 @@ namespace tsunamisquares {
             void setSquareAccel(const UIndex &square_id, const Vec<2> &new_accel);
             void setSquareHeight(const UIndex &square_id, const double &new_height);
             // ======= File I/O ====================
+            int read_bathymetry_chooser(const std::string &file_name);
             int read_bathymetry_txt(const std::string &file_name);
             int read_bathymetry_netCDF(const std::string &file_name);
             int deformFromFile_txt(const std::string &file_name);

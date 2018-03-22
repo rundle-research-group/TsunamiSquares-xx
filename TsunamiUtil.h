@@ -51,7 +51,6 @@ using namespace GeographicLib;
 
 namespace bg = boost::geometry;
 namespace bgi = boost::geometry::index;
-
 #include <netcdf>
 using namespace netCDF;
 

@@ -483,7 +483,7 @@ def bathy_topo_map(LLD_FILE):
     
     # Read bathymetry/topography data
     if extension == ".txt":
-        data = np.genfromtxt(LLD_FILE, dtype=[('lat','f8'),('lon','f8'), ('z','f8')],skip_header=3)
+        data = np.genfromtxt(LLD_FILE, dtype=[('lat','f8'),('lon','f8'), ('z','f8')], skip_header=6)
 
         # Reshape into matrices
         Ncols = len(np.unique(data['lon']))

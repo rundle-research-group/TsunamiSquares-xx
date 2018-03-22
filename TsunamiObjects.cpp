@@ -1337,7 +1337,6 @@ void tsunamisquares::World::computeNeighbors(void) {
         } else {
             std::cout << "Error, no match to any case! (square " << this_id << ")" << std::endl;
         }
-
     }
     
     
@@ -1988,6 +1987,18 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name){
 }
 
 
+int tsunamisquares::World::read_bathymetry_chooser(const std::string &file_name){
+
+	if(file_name.substr(file_name.find_last_of(".")+1) == "txt"){
+		read_bathymetry_txt(file_name);
+	} else if(file_name.substr(file_name.find_last_of(".")+1) == "nc"){
+		read_bathymetry_netCDF(file_name);
+	} else {
+		throw std::invalid_argument( "Bathymetry file type not recognized" );
+	}
+
+	return 0;
+}
 
 
 int tsunamisquares::World::read_bathymetry_txt(const std::string &file_name) {
@@ -2085,7 +2096,7 @@ int tsunamisquares::World::read_bathymetry_netCDF(const std::string &file_name) 
 	for(int j=0; j<num_lats; j++){
 		for(int i=0; i<num_lons; i++){
 			Square     new_square;
-			new_square.set_id(j*num_lons+i);
+			new_square.set_id((j*num_lons) + i);
 
 			// Do all the stuff that Square::read_bathymetry() does
 			LatLonDepth new_lld;
@@ -2117,6 +2128,7 @@ int tsunamisquares::World::read_bathymetry_netCDF(const std::string &file_name) 
 
 	return 0;
 }
+
 
 void tsunamisquares::World::populate_wet_rtree(void){
 	std::map<UIndex, Square>::const_iterator sit;
