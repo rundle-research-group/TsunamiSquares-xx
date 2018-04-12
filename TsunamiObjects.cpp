@@ -742,29 +742,25 @@ tsunamisquares::Vec<2> tsunamisquares::World::getGradient(const UIndex &square_i
 
 
 tsunamisquares::SquareIDSet tsunamisquares::World::get_neighbors_for_accel(const UIndex &square_id) const {
-	Square															 thisSquare;
     SquareIDSet                 	      valid_squares, all_neighbors_and_self;
     SquareIDSet::const_iterator       	                                  id_it;
-
+    bool									             condition1, condition2;
 
     // Grab all valid neighbors
-    all_neighbors_and_self = _squares.find(square_id)->second.get_neighbors_and_self();
+    all_neighbors_and_self = const_square(square_id).get_neighbors_and_self();
 
     // Only include the neighbors if they are not "hi and dry".
     // A wave incident on the beach is not pushed backwards by the tall beach in front of it.
     // The wave only falls back into the ocean after it has water below it that
     // defines a slope for the water surface.
     
-
-
     for (id_it=all_neighbors_and_self.begin(); id_it!=all_neighbors_and_self.end(); ++id_it) {
 		// If dry and taller than this square, do not include.  If dry and lower, do include
 		//        e.g. Are they dry, what's their level, height, etc.
-    	Square neighborSquare = _squares.find(*id_it)->second;
-    	bool condition1 = neighborSquare.height() > 0;
-    	bool condition2 = (neighborSquare.height() == 0);
-    	bool condition3 = (neighborSquare.xyz()[2] < squareLevel(square_id));
-		if(condition3 && (condition1 || condition2)){
+
+    	condition1 = const_square(*id_it).height() >= 0;
+    	condition2 = const_square(*id_it).xyz()[2] < squareLevel(square_id);
+		if(condition2 && condition1){
 			valid_squares.insert(*id_it);
 		}
     }
@@ -779,13 +775,19 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
     // http://stackoverflow.com/questions/1400213/3d-least-squares-plane
 	// solving Ax = b  where x gives values of plane z(x, y) = x1*x + x2*y + x3
     // --------------------------------------------------------------------
+	int								N = square_ids.size();
+
     std::vector<double>             x_vals, y_vals, z_vals;
+    x_vals.reserve(N);
+    y_vals.reserve(N);
+    z_vals.reserve(N);
+
     double 							xav, yav, zav, xvar, yvar;
     SquareIDSet::const_iterator     id_it;
     Vec<2>                          gradient;
     SquareIDSet::const_iterator     iit;
     std::map<UIndex, Vec<2> >       neighborsAndCoords, neighbors_for_fitting;
-    int                             i, N = square_ids.size();
+    int                             i;
     Vec<9>                          A;
     Vec<3>                          b, x;
     
@@ -824,18 +826,17 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
     double det_A = (A[0]*A[4]*A[8]+A[1]*A[5]*A[6]+A[3]*A[7]*A[2]-A[2]*A[4]*A[6]-A[1]*A[3]*A[8]-A[0]*A[5]*A[7]);
 
     //Deal with det(A)=0, eg points all in a line
-    if(det_A!=0){
-        x[0] = (b[0]*A[4]*A[8]+A[1]*A[5]*b[2]+b[1]*A[7]*A[2]-A[2]*A[4]*b[2]-A[1]*b[1]*A[8]-b[0]*A[5]*A[7])/det_A;
-        x[1] = (A[0]*b[1]*A[8]+b[0]*A[5]*A[6]+A[3]*b[2]*A[2]-A[2]*b[1]*A[6]-b[0]*A[3]*A[8]-A[0]*A[5]*b[2])/det_A;
-        gradient[0] = x[0];
-        gradient[1] = x[1];
+    if(det_A > CROSS_TOLERANCE){
+    	gradient[0] = (b[0]*A[4]*A[8]+A[1]*A[5]*b[2]+b[1]*A[7]*A[2]-A[2]*A[4]*b[2]-A[1]*b[1]*A[8]-b[0]*A[5]*A[7])/det_A;
+    	gradient[1] = (A[0]*b[1]*A[8]+b[0]*A[5]*A[6]+A[3]*b[2]*A[2]-A[2]*b[1]*A[6]-b[0]*A[3]*A[8]-A[0]*A[5]*b[2])/det_A;
     }else{
-    	if(square_ids.size() < 2){
+    	if(N < 2){
     		// Only 1 or 0 points in the fit
     		gradient = Vec<2>(0.0,0.0);
     	} else{
     		// Two or more points in a line, do a least squares line in each direction, set any invalid distances to 0
     		gradient[0] = gradient[1] = 0;
+    		xvar = yvar = 0;
 
     		for(i=0; i<N; i++){
     			gradient[0] += (x_vals[i]-xav)*(z_vals[i]-zav);
@@ -1467,8 +1468,16 @@ tsunamisquares::SquareIDSet tsunamisquares::World::getSquareIDs(void) const {
     return square_id_set;
 }
 
-tsunamisquares::Square &tsunamisquares::World::square(const UIndex &ind) throw(std::domain_error) {
+tsunamisquares::Square &tsunamisquares::World::square(const UIndex &ind) {
     std::map<UIndex, Square>::iterator it = _squares.find(ind);
+
+    if (it == _squares.end()) throw std::domain_error("tsunamisquares::World::square");
+    else return it->second;
+}
+
+
+const tsunamisquares::Square &tsunamisquares::World::const_square(const UIndex &ind) const {
+    std::map<UIndex, Square>::const_iterator it = _squares.find(ind);
 
     if (it == _squares.end()) throw std::domain_error("tsunamisquares::World::square");
     else return it->second;

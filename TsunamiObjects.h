@@ -399,8 +399,10 @@ namespace tsunamisquares {
         public:
             Square &new_square(void);
             
-            Square &square(const UIndex &ind) throw(std::domain_error);
+            Square &square(const UIndex &ind);
             
+            const Square &const_square(const UIndex &ind) const;
+
             UIndex next_square_index(void) const {
                 if (_squares.size()) return _squares.rbegin()->first+1;
                 else return 0;
