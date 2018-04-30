@@ -20,6 +20,7 @@ import os
 import read_ETOPO1
 import pandas as pd
 import json
+import itertools
 #import quakelib
 
 # --------------------------------------------------------------------------------
@@ -36,8 +37,8 @@ class simAnalyzer:
         self.lats = np.array(self.sim_data.variables['latitude'])
         
         #TODO: check for simulation that wraps around int date line.
-        self.minlon, self.maxlon, self.meanlon = self.lons.min(), self.lons.max(), self.lons.mean()
-        self.minlat, self.maxlat, self.meanlat = self.lats.min(), self.lats.max(), self.lats.mean()
+        self.numlons, self.minlon, self.maxlon, self.meanlon = len(self.lons), self.lons.min(), self.lons.max(), self.lons.mean()
+        self.numlats, self.minlat, self.maxlat, self.meanlat = len(self.lats), self.lats.min(), self.lats.max(), self.lats.mean()
         self.dlon = abs(self.lons[1]-self.lons[0])
         self.dlat = abs(self.lats[1]-self.lats[0])      
         
@@ -209,7 +210,14 @@ class simAnalyzer:
                 writer.grab_frame()
 
 
-    def load_historical_runup_CSV(self, csv_file_path, year, month, day):
+    def load_historical_runup_CSV(self, csv_file_path, date, fill_bool):
+        year = date[0]
+        month = date[1]
+        day = date[2]
+        self.fill_bool = fill_bool
+        
+        print("Loading historical runup for simulation region...")
+        
         inund_df = pd.read_csv(csv_file_path, sep='\t')
 
         inund_df = inund_df[inund_df.LATITUDE.notnull()]
@@ -224,13 +232,58 @@ class simAnalyzer:
         # Now create an array to match the simulated inundation array showing observed inundations
         obs_histogram, xedge, yedge = np.histogram2d(inund_df.LONGITUDE, inund_df.LATITUDE, bins=[len(self.lons), len(self.lats)], 
                                                           range=[[self.minlon-self.dlon/2.0, self.maxlon+self.dlon/2.0], [self.minlat-self.dlat/2.0, self.maxlat+self.dlat/2.0]])
-        #TODO: figure out right orientation of array obs_histogram = np.flipud(obs_histogram.T)
-        alt_ncVar = self.sim_data.variables['altitude']
-        self.obs_inundation_array = np.ma.masked_where(alt_ncVar[0] < 0, (obs_histogram>0))
-
         
 
+        
+        #TODO: figure out right orientation of array obs_histogram
+        obs_histogram = np.flipud(obs_histogram.T)
+        
+        if self.fill_bool:        
+            # Fill the map with unobserved inundation by "flowing" observed points into nearby squares        
+            obs_array = self._obs_array_filler(obs_histogram)        
+        else:
+            obs_array = obs_histogram
+        
+        alt_ncVar = self.sim_data.variables['altitude']
+        self.obs_inundation_array = np.ma.masked_where(alt_ncVar[0] < 0, (obs_array>0))
+        
+
+
+    def _obs_array_filler(self, obs_histogram):
+        
+        alt_array = self.sim_data.variables['altitude'][0]
+        
+        filled_array = np.copy(obs_histogram)        
+        
+        filling_pass_count = 0
+        did_some_filling = True
+        print("Filling pass: ")
+        while did_some_filling:
+            did_some_filling = False
+            filling_pass_count += 1
+            print(filling_pass_count)
+            for j, i in itertools.product(range(self.numlats), range(self.numlons)):
+                #I find a square with water:
+                if filled_array[j][i] > 0:
+                    this_height = alt_array[j][i]
+                    # Look to neighboring squares
+                    for vert_ind_mod, horiz_ind_mod in itertools.combinations_with_replacement([-1,0,1], 2):
+                        # Avoid indexing out of the arrays
+                        if i==0              and horiz_ind_mod == -1: continue
+                        if i==self.numlons-1 and horiz_ind_mod ==  1: continue
+                        if j==0              and vert_ind_mod  == -1: continue
+                        if j==self.numlats-1 and vert_ind_mod  ==  1: continue
+                        if i==0 and j==0:                             continue
+                        # If the neighbor is lower altitude and empty, fill it
+                        if filled_array[j+vert_ind_mod][i+horiz_ind_mod] == 0 and alt_array[j+vert_ind_mod][i+horiz_ind_mod] < this_height:
+                            did_some_filling = True
+                            filled_array[j+vert_ind_mod][i+horiz_ind_mod] = 1
+        return filled_array
+                    
+        
     def compare_sim_and_obs_runup(self):
+        
+        print("Comparing simulation inundation and observation...")
         
         all_inundation_results = np.zeros_like(self.sim_inundation_array.astype(int))
         all_inundation_results[np.logical_and(self.sim_inundation_array==0, self.obs_inundation_array==1)] = 1
@@ -251,12 +304,14 @@ class simAnalyzer:
 
         cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['gray', 'maroon', 'blue', 'lime'], N=4)
         
-        map_ax = m.imshow(self.all_inundation_results, origin='lower', extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='nearest', cmap=cm)
+        map_ax = m.imshow(self.all_inundation_results, origin='upper', extent=[self.minlon, self.maxlon, self.maxlat, self.minlat], interpolation='nearest', cmap=cm)
         
         cbar = fig.colorbar(map_ax, ticks=[3/8., 9/8., 15/8., 21/8.])
         cbar.ax.set_yticklabels(['Dry', 'Miss', 'False\nAlarm', 'Success'])
         
-        plt.savefig(self.save_file_prefix+'_inundation.png',dpi=100)
+        fill_suffix = ''
+        if self.fill_bool: fill_suffix = '_filled'
+        plt.savefig(self.save_file_prefix+'_inundation{}.png'.format(fill_suffix), dpi=100)
         
         
 
@@ -560,7 +615,7 @@ def bathy_topo_map(LLD_FILE):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()    
-    subparsers = parser.add_subparsers(title='mode', description='valid modes of usage', dest='mode')     
+    subparsers = parser.add_subparsers(title='mode', description='valid modes of usage', dest='mode')
     
     # Arguments for generating bathymetry LLD files
     parser_gen = subparsers.add_parser('generate_bathy', help='generate interpolated bathymetry subset from NOAA\'s ETOPO1 dataset')
@@ -613,8 +668,8 @@ if __name__ == "__main__":
             help="Name of simulation file to analyze.")
     parser_verify.add_argument('--obs_file', required=True,
             help="Observed historical tsunami runup CSV file")
-    parser_verify.add_argument('--ymd', nargs=3, type=int, required=True,
-            help="Year, Month, and Day of historical runup information needed")
+    parser_verify.add_argument('--info_file', required=True, help='json containing regional and earthquake information')
+    parser_verify.add_argument('--fill', required=False, action="store_true", help='json containing regional and earthquake information')
     
     
 #    args = parser.parse_args(['verify', '--sim_file', 'outputs/Tohoku/TohokuSmall_x2_contRealisticX1_output_000-1600.nc', 
@@ -702,8 +757,11 @@ if __name__ == "__main__":
         this_sim = simAnalyzer(args.sim_file)
 
         if args.mode == 'verify':
-            # Load historical inundation data and compare it to simulated results
-            this_sim.load_historical_runup_CSV(args.obs_file, args.ymd[0], args.ymd[1], args.ymd[2])
+            with open(args.info_file, "r") as open_info_file:
+                region_info = json.load(open_info_file)
+            
+            # Load historical inundation data and compare it to simulated results            
+            this_sim.load_historical_runup_CSV(args.obs_file, region_info["date"], args.fill)
             this_sim.compare_sim_and_obs_runup()
         
         if args.mode == 'animate':
