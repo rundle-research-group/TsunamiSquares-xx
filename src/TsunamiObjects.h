@@ -391,8 +391,6 @@ namespace tsunamisquares {
             double _max_depth, _min_spacing, _tot_volume, _max_overlap_error;
             int _num_latitudes, _num_longitudes;
             RTree_spheq _square_rtree, _wet_rtree;
-            // Diffusion constant
-            static constexpr double _D = 140616.45;//100000;
 
 	double apply_diffusion(std::map<UIndex, Square>::iterator& sit);
 
@@ -424,10 +422,6 @@ namespace tsunamisquares {
             }
             int num_lons(void) const {
                 return _num_longitudes;
-            }
-            
-            double D(void) const {
-                return _D;
             }
             double min_lat(void) const {
                 return _min_lat;
@@ -484,7 +478,7 @@ namespace tsunamisquares {
             void moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit);
             void computeDiffussionFracts(const double dt, const double D);
             void diffuseSquaresSpherical(void);
-            void diffuseSquaresSchultz(const double dt, const double D);
+            void diffuseSquaresSchultz(const double dt);
             void diffuseSquaresWard(const int ndiffuses);
             void applyDiffusion(void);
             Vec<2> getAverageSlopeWard(const UIndex &square_id, const SquareIDSet &square_ids) const;

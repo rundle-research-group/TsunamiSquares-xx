@@ -208,13 +208,14 @@ void tsunamisquares::World::diffuseSquaresSpherical(void) {
 //TODO: Also smooth velocity (conserving momentum) after height smoothing
 // Diffusion: Remove a volume of water from each square and distribute it to the neighbors.
 // Model: area_change = diff_const*time_step
-void tsunamisquares::World::diffuseSquaresSchultz(const double dt, const double D) {
+void tsunamisquares::World::diffuseSquaresSchultz(const double dt) {
     std::map<UIndex, Square>::iterator  sit;
     SquareIDSet                         neighborIDs;
     std::map<UIndex, Square>::iterator  nit;
     double                              volume_change, new_level, add_height, height_change;
     Vec<2>                              momentum_change;
     SquareIDSet::iterator               id_it;
+    float D = 140616.45;//100000;
 
     // Initialize updated_heights and momenta, will use this to store the net height and momentum changes
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {

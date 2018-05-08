@@ -56,7 +56,6 @@ The parameter text file contains simulation parameters which may be changed with
 |accel\_bool | Whether to accellerate water each step|
 |diffuse\_bool | Whether to diffuse (smooth) water each step|
 |ndiffusions | How many smoothing sweeps to perform each step|
-|D | Diffusion constant|
 |dt | Time step in seconds|
 |N\_steps | Number of time steps in simulation|
 |current\_step | Initial time step|

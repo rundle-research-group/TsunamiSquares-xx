@@ -68,8 +68,6 @@ int main (int argc, char **argv) {
 
 	//number of Ward diffusion sweeps per time step
 	int		ndiffusions						= atof(param_values["ndiffusions"].c_str());
-    // Diffusion constant for Schultz diffusion
-    double 	D 								= atof(param_values["D"].c_str()); //140616.45;
 
     // Time step in seconds
     double  dt_param						= atof(param_values["dt"].c_str());
