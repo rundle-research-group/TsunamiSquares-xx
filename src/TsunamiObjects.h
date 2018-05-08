@@ -392,7 +392,7 @@ namespace tsunamisquares {
             int _num_latitudes, _num_longitudes;
             RTree_spheq _square_rtree, _wet_rtree;
             // Diffusion constant
-            static const double _D = 140616.45;//100000;
+            static constexpr double _D = 140616.45;//100000;
 
 	double apply_diffusion(std::map<UIndex, Square>::iterator& sit);
 
