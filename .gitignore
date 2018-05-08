@@ -12,3 +12,4 @@ TsunamiGlobe
 *.kml
 *.pptx
 *.pyc
+*.o

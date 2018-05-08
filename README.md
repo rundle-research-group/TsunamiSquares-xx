@@ -24,18 +24,20 @@ Geographiclib
 netCDF4  
 
 ### How to Use
-To compile, do  
-`$ bash setup.sh`
+To compile, navigate to the src/ directory and do
+`$ make`  
+You might have to modify the makefile to match your system.
 
 Run simulation with  
-`$ ./TsunamiGlobe tsunami_params.txt`
+`$ ./TsunamiGlobe parameter_file.txt`  
+See below for how to contruct a parameter file.
 
 Visualizations, bathymetry subsets, and initial condition displacement fields can be created with tsunami_tools.py.  For usage options, do  
 `$ python tsunami_tools.py --help`
 
 
 ## Parameter Definitions  
-tsunami_params.txt contains simulation parameters which may be changed without recompiling from source.
+The parameter text file contains simulation parameters which may be changed without recompiling from source.
 
 |  Parameter | Definition |
 |:-----------|-----------|
