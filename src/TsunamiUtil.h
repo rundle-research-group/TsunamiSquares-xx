@@ -79,7 +79,7 @@ namespace tsunamisquares {
         private:
             double _x[dim];
 
-            void rotation_matrix(double rot_matrix[dim *dim], const double &theta) throw(std::domain_error) {
+            void rotation_matrix(double rot_matrix[dim *dim], const double &theta){
                 if (dim != 3) {
                     throw std::domain_error("Vec::rotation_matrix");
                 } else {
@@ -114,20 +114,20 @@ namespace tsunamisquares {
                 for (unsigned int i=0; i<dim; ++i) _x[i] = vals[i];
             };
             //! Initialize a vector of dim>=1 as (x,0,...0). If dim < 1 an exception is thrown.
-            Vec(const double &x) throw(std::out_of_range) {
+            Vec(const double &x){
                 if (dim < 1) throw std::out_of_range("Vec");
 
                 _x[0] = x;
             };
             //! Initialize a vector of dim>=2 as (x,y,0,...0). If dim < 2 an exception is thrown.
-            Vec(const double &x, const double &y) throw(std::out_of_range) {
+            Vec(const double &x, const double &y){
                 if (dim < 2) throw std::out_of_range("Vec");
 
                 _x[0] = x;
                 _x[1] = y;
             };
             //! Initialize a vector of dim>=3 as (x,y,z,0...0). If dim < 3 an exception is thrown.
-            Vec(const double &x, const double &y, const double &z) throw(std::out_of_range) {
+            Vec(const double &x, const double &y, const double &z){
                 if (dim < 3) throw std::out_of_range("Vec");
 
                 _x[0] = x;
@@ -145,7 +145,7 @@ namespace tsunamisquares {
 
             //! Returns the cross product between this vector and the specified vector.
             //! TODO: Keep this?  If the result is below a specified tolerance, returns null vector
-            Vec<dim> cross(const Vec<dim> &vec) const throw(std::domain_error) {
+            Vec<dim> cross(const Vec<dim> &vec) const{
                 if (dim != 3) throw std::domain_error("Vec::cross");
 
                 double vals[dim];
@@ -267,20 +267,20 @@ namespace tsunamisquares {
             };
 
             //! Subscript operator to read vector elements.
-            double operator[](const unsigned int &d) const throw(std::out_of_range) {
+            double operator[](const unsigned int &d) const{
                 if (dim <= d) throw std::out_of_range("Vec[]");
 
                 return _x[d];
             };
             //! Subscript operator to read/modify vector elements.
-            double &operator[](const unsigned int &d) throw(std::out_of_range) {
+            double &operator[](const unsigned int &d){
                 if (dim <= d) throw std::out_of_range("Vec[]");
 
                 return _x[d];
             };
 
             //! Vector rotation related functions
-            Vec<dim> rotate_around_axis(Vec<dim> axis, const double &theta) throw(std::domain_error) {
+            Vec<dim> rotate_around_axis(Vec<dim> axis, const double &theta){
                 if (dim != 3) throw std::domain_error("Vec::rotate_around_axis");
 
                 unsigned int    i, n;
@@ -331,13 +331,13 @@ namespace tsunamisquares {
                 return res;
             };
             //! Subscript operator to read vector elements.
-            const double operator[](const unsigned int &c) const throw(std::out_of_range) {
+            const double operator[](const unsigned int &c) const{
                 if (ncols <= c) throw std::out_of_range("TensorRow[]");
 
                 return _entries[c];
             };
             //! Subscript operator to read/modify vector elements.
-            double &operator[](const unsigned int &c) throw(std::out_of_range) {
+            double &operator[](const unsigned int &c){
                 if (ncols <= c) throw std::out_of_range("TensorRow[]");
 
                 return _entries[c];
@@ -360,13 +360,13 @@ namespace tsunamisquares {
                 return res;
             };
             //! Subscript operator to read vector elements.
-            const TensorRow<ncols> operator[](const unsigned int &r) const throw(std::out_of_range) {
+            const TensorRow<ncols> operator[](const unsigned int &r) const{
                 if (nrows <= r) throw std::out_of_range("Tensor[]");
 
                 return _rows[r];
             };
             //! Subscript operator to read/modify vector elements.
-            TensorRow<ncols> &operator[](const unsigned int &r) throw(std::out_of_range) {
+            TensorRow<ncols> &operator[](const unsigned int &r){
                 if (nrows <= r) throw std::out_of_range("Tensor[]");
 
                 return _rows[r];
