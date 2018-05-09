@@ -58,7 +58,6 @@ int main (int argc, char **argv) {
 
     const std::string   out_file_name    	= param_values["out_file_name"];
     const std::string   bathy_file       	= param_values["bathy_file"];
-    const std::string   kml_file         	= param_values["kml_file"];
     const std::string   deformation_file 	= param_values["deformation_file"];
 
     // Turn on or off movement of squares, calculating of accelerations, or diffusion

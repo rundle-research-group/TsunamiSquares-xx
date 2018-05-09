@@ -43,7 +43,6 @@ The parameter text file contains simulation parameters which may be changed with
 |:-----------|-----------|
 |out\_file\_name | File name for simulation result output|
 |bathy\_file | File with bathymetry / topography data|
-|kml\_file | File for KML output (currently unused)|
 |initial\_conditions | Type of initial conditions for simulation. Choose from eq, bump, gauss, and saved|
 |deformation\_file | File name for initial seafloor uplift data from simulated earthquake (use with initial\_conditions  = eq)|
 |bump\_height | Used when testing, produces small initial seafloor displacement (use with initial\_conditions  = bump)|
