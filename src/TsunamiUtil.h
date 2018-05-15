@@ -39,7 +39,6 @@
 #include <GeographicLib/Constants.hpp>
 using namespace GeographicLib;
 
-///usr/local/include/boost_1_64_0/
 #include <boost/geometry.hpp>
 #include <boost/geometry/core/cs.hpp>
 #include <boost/geometry/geometries/point.hpp>
