@@ -18,8 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-#include <time.h>
-
 #include "TsunamiObjects.h"
 
 #define assertThrow(COND, ERR_MSG) assert(COND);
@@ -32,7 +30,7 @@ int main (int argc, char **argv) {
     tsunamisquares::SquareIDSet                 ids;
     std::ifstream								param_file;
     std::ofstream                               out_file;
-    clock_t                                     start,end;
+    clock_t                                     start, end;
 
 
     // -------------------------------------------------------------------------------- //
@@ -208,7 +206,7 @@ int main (int argc, char **argv) {
     //out_file << header.c_str();
 	std::cout << "Initilizing netCDF output...";
     this_world.initilize_netCDF_file(out_file_name);
-    std::cout.precision(output_num_digits_for_percent);
+    //std::cout.precision(output_num_digits_for_percent);
 
 
 
@@ -221,7 +219,7 @@ int main (int argc, char **argv) {
     while (time < max_time) {
         // If this is a writing step, print status
         if (current_step%update_step == 0) {
-            std::cout << ".." << current_step << "/"<<N_steps << "..";
+            std::cout << ".." << current_step << "/"<<N_steps << ".."<<std::endl;
             std::cout << std::flush;
         }
         // Check sim health, exit if there are NaNs or Infs floating around
@@ -240,13 +238,27 @@ int main (int argc, char **argv) {
 
         // Move the squares
         if(move_bool) {
+        	//double start_timing = omp_get_wtime();
+
         	this_world.moveSquares(dt, accel_bool, doPlaneFit);
+
+        	//double diff_timing = start_timing - omp_get_wtime();
+    		//int time_exp = int(log10(diff_timing));
+    		//double time_prefact = pow(10, (fmod(log10(diff_timing), 1)));
+    		//std::cout<< "Time spent in moving block: "<< diff_timing<<std::endl;//time_prefact << "x10^(" << time_exp <<")"<< std::endl;
         }
 
         // Diffuse (smooth) the squares
         if(diffuse_bool) {
+        	//double start_timing = omp_get_wtime();
+
 			//this_world.diffuseSquaresSchultz(dt, D);
 			this_world.diffuseSquaresWard(ndiffusions);
+
+        	//float diff_timing = float(start_timing) - float(omp_get_wtime());
+    		//int time_exp = int(log10(diff_timing));
+    	    //float time_prefact = pow(10, (fmod(log10(diff_timing), 1)));
+    		//std::cout<< "Time spent in smoothing block: "<< diff_timing<<std::endl;//time_prefact << "x10^(" << time_exp <<")"<< std::endl;
         }
 
 

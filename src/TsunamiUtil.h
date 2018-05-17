@@ -22,6 +22,7 @@
 #include <float.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <time.h>
 #include <sstream>
 #include <iterator>
 #include <vector>

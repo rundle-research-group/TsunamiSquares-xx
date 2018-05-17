@@ -290,6 +290,7 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 		Vec<2>								dmom, dvel;
 		SquareIDSet::iterator               id_it;
 
+		double wall_diffuse_begin = omp_get_wtime();
 
 		std::map<UIndex, double> local_height_changes;
 		std::map<UIndex, Vec<2> > local_momentum_changes;
@@ -364,14 +365,26 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 			}//end if this square has water
 		}//end parallel for loop over squares
 
+		double wall_critical_arrive,  wall_critical_start, wall_critical_end, wall_critical_leave;
+		wall_critical_arrive = omp_get_wtime();
 	#pragma omp critical
 		{
 			// Here is where we combine all local updated heights and momenta into the global updated values
+			wall_critical_start = omp_get_wtime();
 			for (lsit=_squares.begin(); lsit!=_squares.end(); ++lsit) {
 				lsit->second.set_updated_height(lsit->second.updated_height()      + local_height_changes[lsit->first]);
 				lsit->second.set_updated_momentum( lsit->second.updated_momentum() + local_momentum_changes[lsit->first]);
 			}
+			wall_critical_end = omp_get_wtime();
 		}
+		wall_critical_leave = omp_get_wtime();
+		float wall_timeIdleBeforeCrit = wall_critical_start - wall_critical_arrive;
+		float wall_totalDiffuseTime = wall_critical_leave - wall_diffuse_begin;
+		//int time_exp = int(log10(diff_timing));
+		//float time_prefact = pow(10, (fmod(log10(diff_timing), 1)));
+		//std::cout<< "Time spent in moving critical block: "<< time_prefact << "x10^(" << time_exp <<"("<< std::endl;
+		std::cout<< omp_get_thread_num() << " Time waiting before crit block: " << wall_timeIdleBeforeCrit << std::endl;
+		std::cout<< omp_get_thread_num() << " Total time in diffusion       : " << wall_totalDiffuseTime << std::endl;
 
 	}//end parallel block
 
@@ -627,15 +640,24 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 	        }//end else statement for moving squares or not
 		}//end omp for loop over squares
 
-
+		double wall_critical_arrive,  wall_critical_start, wall_critical_end, wall_critical_leave;
+		wall_critical_arrive = omp_get_wtime();
 	#pragma omp critical
 		{
+			wall_critical_start = omp_get_wtime();
 			// Here is where we combine all local updated heights and momenta into the global updated values
 		    for (lsit=_squares.begin(); lsit!=_squares.end(); ++lsit) {
 				lsit->second.set_updated_height(lsit->second.updated_height()+local_updated_heights[lsit->first]);
 				lsit->second.set_updated_momentum( lsit->second.updated_momentum() + local_updated_momenta[lsit->first]);
 			}
+			wall_critical_end = omp_get_wtime();
 		}
+		wall_critical_leave = omp_get_wtime();
+		float wall_timeIdleBeforeCrit = wall_critical_start - wall_critical_arrive;
+		//int time_exp = int(log10(diff_timing));
+		//float time_prefact = pow(10, (fmod(log10(diff_timing), 1)));
+		//std::cout<< "Time spent in moving critical block: "<< time_prefact << "x10^(" << time_exp <<"("<< std::endl;
+		//std::cout<< omp_get_thread_num() << " Time waiting befor crit block: " << wall_timeIdleBeforeCrit << std::endl;
 
 	}//end parallel block
 
