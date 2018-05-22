@@ -30,7 +30,8 @@ int main (int argc, char **argv) {
     tsunamisquares::SquareIDSet                 ids;
     std::ifstream								param_file;
     std::ofstream                               out_file;
-    clock_t                                     start, end;
+    clock_t                                     start_cpuclock, end_cpuclock;
+    float										start, end;
 
 
     // -------------------------------------------------------------------------------- //
@@ -38,6 +39,7 @@ int main (int argc, char **argv) {
     // -------------------------------------------------------------------------------- //
     /*  Wilson: Trying a simple input file for these parameters.  Can be improved in the future for readability and
      *  suseptability to errors*/
+
 
     // Ensure we are given the parameter file name
 	assertThrow(argc == 2, "usage: param_file");
@@ -214,12 +216,14 @@ int main (int argc, char **argv) {
     // --========-           Begin the Simulation; Move the Squares          ----====- //
     // --------------------------------------------------------------------------------//
     start = omp_get_wtime();
+    start_cpuclock = clock();
+
     bool isHealthy = true;
     std::cout << "Moving squares....time_step=" <<dt << "...";
     while (time < max_time) {
         // If this is a writing step, print status
         if (current_step%update_step == 0) {
-            std::cout << ".." << current_step << "/"<<N_steps << ".."<<std::endl;
+            //std::cout << ".." << current_step << "/"<<N_steps << ".."<<std::endl;
             std::cout << std::flush;
         }
         // Check sim health, exit if there are NaNs or Infs floating around
@@ -285,8 +289,9 @@ int main (int argc, char **argv) {
     // --------------------------------------------------------------------------------//
     std::cout << std::endl << "Results written to " << out_file_name << std::endl;
     end = omp_get_wtime();
+    end_cpuclock = clock();
     std::cout.precision(2+output_num_digits_for_percent);
-    std::cout << "Total time: " << (float(end)-float(start)) << " secs." << std::endl << std::endl;
+    std::cout << "Total time: " << (float(end)-float(start)) << "secs, " << "CPU time: " << (float(end_cpuclock)-float(start_cpuclock))/CLOCKS_PER_SEC << " secs." <<std::endl << std::endl;
     return 0;
 }           /* <(^_^<) Happy Coder says: We're good up through this line!*/
 
