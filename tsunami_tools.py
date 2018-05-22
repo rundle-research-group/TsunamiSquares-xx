@@ -290,12 +290,17 @@ class simAnalyzer:
         all_inundation_results[np.logical_and(self.sim_inundation_array==1, self.obs_inundation_array==0)] = 2
         all_inundation_results[np.logical_and(self.sim_inundation_array==1, self.obs_inundation_array==1)] = 3
         
+        hits = np.count_nonzero(all_inundation_results==3)
+        misses = np.count_nonzero(all_inundation_results==1)
+        falses = np.count_nonzero(all_inundation_results==2)
+        
         alt_ncVar = self.sim_data.variables['altitude']
         self.all_inundation_results = np.ma.masked_where(alt_ncVar[0]<0, all_inundation_results)
         
         
         plt.close(1)
-        fig, ax = plt.subplots(num=1)
+        fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw = {'width_ratios':[1, 3]})
+
         m = Basemap(projection='cyl',llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
                     llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='i')
         m.drawmeridians(np.linspace(self.minlon, self.maxlon, num=5.0), labels=[0,0,0,1], linewidth=0)
@@ -308,11 +313,24 @@ class simAnalyzer:
         
         cbar = fig.colorbar(map_ax, ticks=[3/8., 9/8., 15/8., 21/8.])
         cbar.ax.set_yticklabels(['Dry', 'Miss', 'False\nAlarm', 'Success'])
+
+        precision = hits/(hits + misses)
+        recall = hits/(hits + falses)
+        bgraph = ax0.bar([1,2,3], [misses, falses, hits])
+        ax0.set_xticks([1,2,3], ['Misses', 'False\nAlarms', 'Hits'])
+        bgraph[0].set_color('maroon')
+        bgraph[1].set_color('blue')
+        bgraph[2].set_color('lime')
+        
+        ax0.annotate('Precision:\t {:0.3f}%\nRecall:\t {:0.3f}%'.format(100*hits/float(hits+misses), 100*hits/float(hits+falses)),
+            xytext=(0.8, 0.95), textcoords='axes fraction',
+            horizontalalignment='right', verticalalignment='top')
+        
+        plt.tight_layout()        
         
         fill_suffix = ''
         if self.fill_bool: fill_suffix = '_filled'
         plt.savefig(self.save_file_prefix+'_inundation{}.png'.format(fill_suffix), dpi=100)
-        
         
 
 def analyticGaussPileIntegrand(k, r, t, Dc, Rc, depth):
