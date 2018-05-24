@@ -208,7 +208,7 @@ int main (int argc, char **argv) {
     //out_file << header.c_str();
 	std::cout << "Initilizing netCDF output...";
     this_world.initilize_netCDF_file(out_file_name);
-    //std::cout.precision(output_num_digits_for_percent);
+    std::cout.precision(output_num_digits_for_percent);
 
 
 
