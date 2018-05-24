@@ -384,7 +384,7 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 		//float time_prefact = pow(10, (fmod(log10(diff_timing), 1)));
 		//std::cout<< "Time spent in moving critical block: "<< time_prefact << "x10^(" << time_exp <<"("<< std::endl;
 		std::cout<< omp_get_thread_num() << " Time waiting before crit block: " << wall_timeIdleBeforeCrit <<
-				                                   ", Total time in diffusion: " << wall_totalDiffuseTime << std::endl;
+				                                   " Total time in diffusion: " << wall_totalDiffuseTime << std::endl;
 
 	}//end parallel block
 
@@ -664,7 +664,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 		//std::cout<< "Time spent in moving critical block: "<< time_prefact << "x10^(" << time_exp <<"("<< std::endl;
 		//std::cout<< omp_get_thread_num() << " Time waiting befor crit block: " << wall_timeIdleBeforeCrit << std::endl;
 		std::cout<< omp_get_thread_num() << " Time waiting before crit block: " << wall_timeIdleBeforeCrit <<
-				                                   ", Total time in moving: " << wall_totalDiffuseTime << std::endl;
+				                                   " Total time in moving: " << wall_totalDiffuseTime << std::endl;
 
 	}//end parallel block
 
