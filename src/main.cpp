@@ -219,7 +219,7 @@ int main (int argc, char **argv) {
     start_cpuclock = clock();
 
     bool isHealthy = true;
-    std::cout << "Moving squares....time_step=" <<dt << "...";
+    std::cout << "Moving squares....time_step=" <<dt << "...\n";
     while (time < max_time) {
         // If this is a writing step, print status
         if (current_step%update_step == 0) {
