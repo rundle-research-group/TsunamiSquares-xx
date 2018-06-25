@@ -300,13 +300,13 @@ class simAnalyzer:
         
         plt.close(1)
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw = {'width_ratios':[1, 3]})
-
+        plt.sca(ax1)
         m = Basemap(projection='cyl',llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
                     llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='i')
-        m.drawmeridians(np.linspace(self.minlon, self.maxlon, num=5.0), labels=[0,0,0,1], linewidth=0)
-        m.drawparallels(np.linspace(self.minlat, self.maxlat, num=5.0), labels=[1,0,0,0], linewidth=0)
+        #m.drawmeridians(np.linspace(self.minlon, self.maxlon, num=5.0), labels=[0,0,0,1], linewidth=0)
+        #m.drawparallels(np.linspace(self.minlat, self.maxlat, num=5.0), labels=[1,0,0,0], linewidth=0)
         #m.drawcoastlines(linewidth=0.5)
-
+        
         cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['gray', 'maroon', 'blue', 'lime'], N=4)
         
         map_ax = m.imshow(self.all_inundation_results, origin='upper', extent=[self.minlon, self.maxlon, self.maxlat, self.minlat], interpolation='nearest', cmap=cm)
@@ -316,15 +316,21 @@ class simAnalyzer:
 
         precision = hits/(hits + misses)
         recall = hits/(hits + falses)
-        bgraph = ax0.bar([1,2,3], [misses, falses, hits])
-        ax0.set_xticks([1,2,3], ['Misses', 'False\nAlarms', 'Hits'])
-        bgraph[0].set_color('maroon')
-        bgraph[1].set_color('blue')
-        bgraph[2].set_color('lime')
+        bgraph0 = ax0.bar([1.1 , 2.1], [hits, falses], width=0.8)
+        bgraph1 = ax0.bar([1.1], [misses], bottom=[hits], width=0.8)
+        ax0.set_xticks([1.5, 2.5], minor=False)
+        ax0.set_xticklabels(["Observed\nInundation", "False\nAlarm"], minor=False)
+#        ax0.tick_params(which='both',      # both major and minor ticks are affected
+#                        bottom=False,      # ticks along the bottom edge are off
+#                        top=False,         # ticks along the top edge are off
+#                        labelbottom=False) # labels along the bottom edge are off
+        bgraph0[0].set_color('lime')
+        bgraph0[1].set_color('blue')
+        bgraph1[0].set_color('maroon')
         
-        ax0.annotate('Precision:\t {:0.3f}%\nRecall:\t {:0.3f}%'.format(100*hits/float(hits+misses), 100*hits/float(hits+falses)),
-            xytext=(0.8, 0.95), textcoords='axes fraction',
-            horizontalalignment='right', verticalalignment='top')
+#        ax0.annotate('Precision:\t {:0.3f}%\nRecall:\t {:0.3f}%'.format(100*hits/float(hits+misses), 100*hits/float(hits+falses)),
+#            xytext=(0.8, 0.95), textcoords='axes fraction',
+#            horizontalalignment='right', verticalalignment='top')
         
         plt.tight_layout()        
         
@@ -413,6 +419,145 @@ def plot_eq_displacements(disp_file):
 
 
 def plot_eq_disps_horiz(disp_file):
+    # Read displacement data
+    
+    disp_data = Dataset(disp_file, 'r')
+    print("Data loaded")
+    #disp_data = np.genfromtxt(disp_file, dtype=[('lon','f8'), ('lat','f8'), ('z','f8'), ('eU','f8'), ('nV','f8')])
+    save_file_prefix = os.path.splitext(disp_file)[0]+"_disp"  
+    
+    # Data ranges
+    lon_min, lon_max = disp_data['longitude'][:].min(), disp_data['longitude'][:].max()
+    lat_min, lat_max = disp_data['latitude'][:].min(), disp_data['latitude'][:].max()
+    mean_lat = 0.5*(lat_min + lat_max)
+    mean_lon = 0.5*(lon_min + lon_max)
+    lon_range = lon_max - lon_min
+    lat_range = lat_max - lat_min    
+
+    
+    # Reshape into matrices
+    Ncols = len(disp_data['longitude'][:])
+    Nrows = len(disp_data['latitude'][:])
+    X, Y = np.meshgrid(disp_data['longitude'][:], disp_data['latitude'][:])
+    Z = disp_data['uplift'][::]
+    eU = disp_data['east U'][::]
+    nV = disp_data['north V'][::]
+    
+    cmap = plt.get_cmap('seismic')
+    
+    z_min,z_max = Z.min(), Z.max()
+    z_lim = max(np.abs(z_min),np.abs(z_max))
+    normz = mcolor.Normalize(vmin=-z_lim, vmax=z_lim)
+    #LEVELSz = np.concatenate((-1*np.logspace(-3, np.log10(z_lim), 6)[::-1], np.logspace(-3, np.log10(z_lim), 6)))
+    LEVELSz = np.concatenate((-1*np.linspace(0.01, z_lim, 6)[::-1], np.linspace(0.01, z_lim, 6)))
+    
+    e_min,e_max = eU.min(), eU.max()
+    e_lim = max(np.abs(e_min),np.abs(e_max))
+    norme = mcolor.Normalize(vmin=-e_lim, vmax=e_lim)
+    #LEVELSe = np.concatenate((-1*np.logspace(-3, np.log10(e_lim), 6)[::-1], np.logspace(-3, np.log10(e_lim), 6)))
+    LEVELSe = np.concatenate((-1*np.linspace(0.01, e_lim, 6)[::-1], np.linspace(0.01, e_lim, 6)))
+    
+    n_min,n_max = nV.min(), nV.max()
+    n_lim = max(np.abs(n_min),np.abs(n_max))
+    normn = mcolor.Normalize(vmin=-n_lim, vmax=n_lim)
+    #LEVELSn = np.concatenate((-1*np.logspace(-3, np.log10(n_lim), 6)[::-1], np.logspace(-3, np.log10(n_lim), 6)))
+    LEVELSn = np.concatenate((-1*np.linspace(0.01, n_lim, 6)[::-1], np.linspace(0.01, n_lim, 6)))
+    
+    interp = 'cubic'
+    landcolor = '#FFFFCC'
+    framelabelfont = mfont.FontProperties(family='Arial', style='normal', variant='normal', size=14)
+
+    # Initialize the frame and axes
+    fig = plt.figure(0)    
+    m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
+                llcrnrlon=lon_min, urcrnrlon=lon_max, lat_0=mean_lat, lon_0=mean_lon, resolution='h')
+    m.ax = fig.add_subplot(111)
+    m.drawmeridians(np.linspace(lon_min,lon_max,num=5.0),labels=[0,0,0,1], linewidth=0)
+    m.drawparallels(np.linspace(lat_min,lat_max,num=5.0),labels=[1,0,0,0], linewidth=0)
+    m.drawcoastlines(linewidth=0.5)
+    m.fillcontinents(color=landcolor, zorder=0)
+
+    # Colorbar
+    divider = make_axes_locatable(m.ax)
+    cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
+    plt.figtext(0.96, 0.7, r'Vertical disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
+    cbz = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=normz)
+    
+    # Masked array via conditional, don't color the land unless it has water on it
+    zero_below = int(len(LEVELSz)/2)-1
+    zero_above = zero_below+1
+    masked_data = np.ma.masked_where(np.logical_and(np.array(Z <= LEVELSz[zero_above]),np.array(Z >= LEVELSz[zero_below])), Z)
+    
+    # Set masked pixels to the land color
+    cmap.set_bad(landcolor, 0.0)  # set alpha=0.0 for transparent
+    
+    # Plot the contours
+    m.contourf(X, Y, masked_data, LEVELSz, cmap=cmap, norm=normz, extend='both', zorder=1)
+
+    plt.savefig(save_file_prefix+'_z.png',dpi=100)
+    
+    # Initialize the frame and axes
+    fig = plt.figure(1)    
+    m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
+                llcrnrlon=lon_min, urcrnrlon=lon_max, lat_0=mean_lat, lon_0=mean_lon, resolution='h')
+    m.ax = fig.add_subplot(111)
+    m.drawmeridians(np.linspace(lon_min,lon_max,num=5.0),labels=[0,0,0,1], linewidth=0)
+    m.drawparallels(np.linspace(lat_min,lat_max,num=5.0),labels=[1,0,0,0], linewidth=0)
+    m.drawcoastlines(linewidth=0.5)
+    m.fillcontinents(color=landcolor, zorder=0)
+
+    # Colorbar
+    divider = make_axes_locatable(m.ax)
+    cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
+    plt.figtext(0.96, 0.7, r'East disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
+    cbe = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norme)
+    
+    # Masked array via conditional, don't color the land unless it has water on it
+    zero_below = int(len(LEVELSe)/2)-1
+    zero_above = zero_below+1
+    masked_data = np.ma.masked_where(np.logical_and(np.array(eU <= LEVELSe[zero_above]),np.array(eU >= LEVELSe[zero_below])), eU)
+    
+    # Set masked pixels to the land color
+    cmap.set_bad(landcolor, 0.0)  # set alpha=0.0 for transparent
+    
+    # Plot the contours
+    m.contourf(X, Y, masked_data, LEVELSe, cmap=cmap, norm=norme, extend='both', zorder=1)
+
+    plt.savefig(save_file_prefix+'_e.png',dpi=100)
+
+    # Initialize the frame and axes
+    fig = plt.figure(2)    
+    m = Basemap(projection='cyl',llcrnrlat=lat_min, urcrnrlat=lat_max,
+                llcrnrlon=lon_min, urcrnrlon=lon_max, lat_0=mean_lat, lon_0=mean_lon, resolution='h')
+    m.ax = fig.add_subplot(111)
+    m.drawmeridians(np.linspace(lon_min,lon_max,num=5.0),labels=[0,0,0,1], linewidth=0)
+    m.drawparallels(np.linspace(lat_min,lat_max,num=5.0),labels=[1,0,0,0], linewidth=0)
+    m.drawcoastlines(linewidth=0.5)
+    m.fillcontinents(color=landcolor, zorder=0)
+
+    # Colorbar
+    divider = make_axes_locatable(m.ax)
+    cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
+    plt.figtext(0.96, 0.7, r'North disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
+    cbn = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=normn)
+    
+    # Masked array via conditional, don't color the land unless it has water on it
+    zero_below = int(len(LEVELSn)/2)-1
+    zero_above = zero_below+1
+    masked_data = np.ma.masked_where(np.logical_and(np.array(nV <= LEVELSn[zero_above]),np.array(nV >= LEVELSn[zero_below])), nV)
+    
+    # Set masked pixels to the land color
+    cmap.set_bad(landcolor, 0.0)  # set alpha=0.0 for transparent
+    
+    # Plot the contours
+    m.contourf(X, Y, masked_data, LEVELSn, cmap=cmap, norm=normn, extend='both', zorder=1)
+
+    plt.savefig(save_file_prefix+'_n.png',dpi=100)    
+    
+    print("Saved to "+save_file)
+
+
+def plot_eq_disps_horiz_xyuen(disp_file):
     # Read displacement data
     disp_data = np.genfromtxt(disp_file, dtype=[('lon','f8'), ('lat','f8'), ('z','f8'), ('eU','f8'), ('nV','f8')])
     
@@ -765,9 +910,10 @@ if __name__ == "__main__":
         if not args.plot_horizontal:
             plot_eq_displacements(args.field_file)
         else:
-            if not os.path.splitext(args.field_file)[1] == 'xyuen':
-                raise BaseException("Must have .xyuen file format for horizontal field plotting")
-            plot_eq_disps_horiz(args.field_file)
+            if os.path.splitext(args.field_file)[1] == '.xyuen':
+                plot_eq_disps_horiz_xyuen(args.field_file)
+            elif os.path.splitext(args.field_file)[1] == '.nc':
+                plot_eq_disps_horiz(args.field_file)
     
     
     if args.mode in ['animate', 'verify']:
