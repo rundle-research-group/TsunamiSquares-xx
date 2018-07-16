@@ -67,3 +67,4 @@ The parameter text file contains simulation parameters which may be changed with
 |doPlaneFit | Whether to use the plane-fitting method for acceleration calculations|
 |num\_threads | How many threads to use during multiprocessing blocks|
 |check\_sim\_health | Whether to check for NaNs and infs each time step and break the sim with helpful info if found |
+|absorbing\_boundaries | Whether to use absorbing boundary conditions to avoid relections off simulation bounds |

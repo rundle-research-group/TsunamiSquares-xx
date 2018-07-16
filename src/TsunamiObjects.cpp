@@ -412,7 +412,7 @@ void tsunamisquares::World::applyDiffusion(void){
 
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
-void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit) {
+void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries) {
 
     // Initialize the updated height and velocity to zero. These are the containers
     // used to keep track of the distributed height/velocity from moving squares.
@@ -448,7 +448,12 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			lsit->second.set_updated_height(0.0);
 			lsit->second.set_updated_momentum(Vec<2>(0.0,0.0));
 			// Set acceleration based on the current slope of the water surface
-			updateAcceleration(lsit->first, ldoPlaneFit);
+			if(absorbing_boundaries && lsit->second.edge_status()==0){
+				updateAcceleration(lsit->first, ldoPlaneFit);
+			}else{
+				updateAcceleration(lsit->first, ldoPlaneFit);
+			}
+
 
 			Vec<2> current_velo, current_accel, current_pos, new_velo, average_velo, new_center;
 			Vec<2> new_bleft, new_tright;
@@ -460,7 +465,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			current_pos = squareCenter(lsit->first);
 			current_velo = lsit->second.velocity();
 
-			if(laccel_bool){
+			if(laccel_bool && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.edge_status()==0))){
 				current_accel = lsit->second.accel();
 			}else{
 				current_accel = Vec<2>(0,0);
@@ -648,9 +653,14 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
         Vec<2> veltoset = sit->second.updated_momentum()/(sit->second.mass());
 
 
-        // Here we're trying to catch bad velocities that sometimes arrise.  This is a bandaid, and the root cause is still unknown.
+        // Here we're trying to catch bad velocities if they arrise.
         if(isnan(veltoset[0]) || isinf(veltoset[0]) || isnan(veltoset[1]) || isinf(veltoset[1])){
         	veltoset = Vec<2>(0, 0);
+        }
+
+        // Kill velocity on edge squares
+        if(absorbing_boundaries && sit->second.edge_status()==2){
+        	sit->second.set_velocity( Vec<2>(0.0, 0.0));
         }
 
         // Don't set any velcity or height to tiny amounts of water
@@ -1244,7 +1254,7 @@ tsunamisquares::UIndex tsunamisquares::World::whichSquare(const Vec<2> &location
 void tsunamisquares::World::indexNeighbors() {
 	computeNeighbors();
 	computeNeighborCoords();
-	computeInvalidDirections();
+	computeEdgeStatus();
 	calcMaxOverlapError();
 }
 
@@ -1382,30 +1392,48 @@ void tsunamisquares::World::computeNeighborCoords(void) {
 
 }
 
-void tsunamisquares::World::computeInvalidDirections(void) {
+void tsunamisquares::World::computeEdgeStatus(void) {
     std::map<UIndex, Square>::iterator sit;
+    SquareIDSet::iterator nit;
+    SquareIDSet neighbor_ids;
 
-    // Find directions that water in each square is not allowed to flow.
+    // Set edge status: 0 = active simulation, 1 = second to edge (kill acceleration), 2 = edge (no accel or movement)
 
+    // Find edge squares and directions that water in each square is not allowed to flow
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         std::vector<bool>       new_invalid_directions(4, false);
 
     	if(sit->second.left() == INVALID_INDEX){// || square(sit->second.left()).xyz()[2]>=0.0){
         	new_invalid_directions[0] = true;
+        	sit->second.set_edge_status(2);
         }
         if(sit->second.right() == INVALID_INDEX){// || square(sit->second.right()).xyz()[2]>=0.0){
         	new_invalid_directions[1] = true;
+        	sit->second.set_edge_status(2);
         }
         if(sit->second.bottom() == INVALID_INDEX){// || square(sit->second.bottom()).xyz()[2]>=0.0){
         	new_invalid_directions[2] = true;
+        	sit->second.set_edge_status(2);
         }
         if(sit->second.top() == INVALID_INDEX){// || square(sit->second.top()).xyz()[2]>=0.0){
         	new_invalid_directions[3] = true;
+        	sit->second.set_edge_status(2);
         }
 
         sit->second.set_invalid_directions(new_invalid_directions);
     }
 
+    // Find second-to-edge squares
+    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+    	if(sit->second.edge_status()!=2){
+    		neighbor_ids = sit->second.get_valid_neighbors();
+    		for(nit=neighbor_ids.begin(); nit!=neighbor_ids.end(); ++nit){
+    			if(square(*nit).edge_status() == 2){
+    				sit->second.set_edge_status(1);
+    			}
+    		}
+    	}
+    }
 
 }
 

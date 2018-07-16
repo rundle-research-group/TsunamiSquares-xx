@@ -80,6 +80,8 @@ namespace tsunamisquares {
 
             std::vector<bool>         _invalid_directions;
 
+            int						  _edge_status;
+
             std::map<UIndex, double>  _diffusion_fractions;
 
             Vec<3> 	                  _pos;
@@ -98,6 +100,8 @@ namespace tsunamisquares {
                 _data._friction = 0.00001;//0.02;
                 
                 _invalid_directions = std::vector<bool>(4, false);
+
+                _edge_status = 0;
 
                 _left = _right = _top = _bottom = INVALID_INDEX;
                 _top_right = _top_left = _bottom_left = _bottom_right = INVALID_INDEX;
@@ -220,6 +224,14 @@ namespace tsunamisquares {
             	for(int i=0;i<4;i++){
             		_invalid_directions[i] = new_invalid_directions[i];
             	}
+            }
+
+            int edge_status(void) const{
+            	return _edge_status;
+            }
+
+            void set_edge_status(const int &new_edge_status) {
+            	_edge_status = new_edge_status;
             }
 
             std::map<UIndex, Vec<2> > local_neighbor_coords(void) const {
@@ -473,9 +485,9 @@ namespace tsunamisquares {
             void indexNeighbors();
             void computeNeighbors(void);
             void computeNeighborCoords(void);
-            void computeInvalidDirections(void);
+            void computeEdgeStatus(void);
             void fillToSeaLevel(void);
-            void moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit);
+            void moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries);
             void computeDiffussionFracts(const double dt, const double D);
             void diffuseSquaresSpherical(void);
             void diffuseSquaresSchultz(const double dt);

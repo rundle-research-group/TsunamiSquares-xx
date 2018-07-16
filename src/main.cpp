@@ -111,6 +111,9 @@ int main (int argc, char **argv) {
 	// Check for nans and infs each time step and break and print diagnostic if found
 	bool    check_sim_health                = atof(param_values["check_sim_health"].c_str());
 
+	// Use absorbing boundary conditions to avoid reflections off simulation boundaries
+	bool    absorbing_boundaries            = atof(param_values["absorbing_boundaries"].c_str());
+
 
 	omp_set_num_threads(num_threads);
     
@@ -240,7 +243,7 @@ int main (int argc, char **argv) {
 
         // Move the squares
         if(move_bool) {
-        	this_world.moveSquares(dt, accel_bool, doPlaneFit);
+        	this_world.moveSquares(dt, accel_bool, doPlaneFit, absorbing_boundaries);
         }
 
         // Diffuse (smooth) the squares
