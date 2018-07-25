@@ -113,7 +113,8 @@ class simAnalyzer:
     
         surface = None
         with writer.saving(fig, save_file, DPI):
-            for index in range(int(N_STEP)):
+            for ind in range(int(N_STEP/2)):
+                index = ind*2
                 # Get the subset of data corresponding to current time
                 this_level  = level_ncVar[index]
                 this_height = height_ncVar[index]
@@ -127,7 +128,7 @@ class simAnalyzer:
     
                 # Plot the surface for this time step
                 if surface is None:
-                    ax.imshow(masked_data, cmap=cmap, origin='lower', norm=norm, extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='none')
+                    ax.imshow(masked_data, cmap=cmap, norm=norm, extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='none')
                 else:
                     surface.set_data(masked_data)
                     
@@ -480,7 +481,7 @@ def plot_eq_disps_horiz(disp_file):
     # Colorbar
     divider = make_axes_locatable(m.ax)
     cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
-    plt.figtext(0.96, 0.7, r'Vertical disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
+    plt.figtext(0.8, 0.7, r'Vertical disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
     cbz = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=normz)
     
     # Masked array via conditional, don't color the land unless it has water on it
@@ -509,7 +510,7 @@ def plot_eq_disps_horiz(disp_file):
     # Colorbar
     divider = make_axes_locatable(m.ax)
     cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
-    plt.figtext(0.96, 0.7, r'East disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
+    plt.figtext(0.8, 0.7, r'East disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
     cbe = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norme)
     
     # Masked array via conditional, don't color the land unless it has water on it
@@ -538,7 +539,7 @@ def plot_eq_disps_horiz(disp_file):
     # Colorbar
     divider = make_axes_locatable(m.ax)
     cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
-    plt.figtext(0.96, 0.7, r'North disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
+    plt.figtext(0.8, 0.7, r'North disp $[m]$', rotation='vertical', fontproperties=framelabelfont)
     cbn = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=normn)
     
     # Masked array via conditional, don't color the land unless it has water on it
@@ -554,7 +555,7 @@ def plot_eq_disps_horiz(disp_file):
 
     plt.savefig(save_file_prefix+'_n.png',dpi=100)    
     
-    print("Saved to "+save_file)
+    print("Saved files")
 
 
 def plot_eq_disps_horiz_xyuen(disp_file):

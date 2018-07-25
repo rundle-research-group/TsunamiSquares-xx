@@ -80,7 +80,11 @@ namespace tsunamisquares {
 
             std::vector<bool>         _invalid_directions;
 
-            int						  _edge_status;
+            unsigned int			  _blocks_from_edge;
+
+            unsigned int		      _2Dindeces[2];
+
+            float					  _damping_factor;
 
             std::map<UIndex, double>  _diffusion_fractions;
 
@@ -101,7 +105,12 @@ namespace tsunamisquares {
                 
                 _invalid_directions = std::vector<bool>(4, false);
 
-                _edge_status = 0;
+                _blocks_from_edge = 0;
+
+                _2Dindeces[0] = std::numeric_limits<unsigned int>::quiet_NaN();
+                _2Dindeces[1] = std::numeric_limits<unsigned int>::quiet_NaN();
+
+                _damping_factor = 0;
 
                 _left = _right = _top = _bottom = INVALID_INDEX;
                 _top_right = _top_left = _bottom_left = _bottom_right = INVALID_INDEX;
@@ -141,7 +150,12 @@ namespace tsunamisquares {
             void set_density(const double &new_density) {
                 _data._density = new_density;
             };
-            
+            float damping_factor(void) const {
+				return _damping_factor;
+			};
+			void set_damping_factor(const double &new_damping_factor) {
+				_damping_factor = new_damping_factor;
+			};
             Vec<2> velocity(void) const {
                 return _data._velocity;
             };
@@ -226,13 +240,29 @@ namespace tsunamisquares {
             	}
             }
 
-            int edge_status(void) const{
-            	return _edge_status;
+            unsigned int blocks_from_edge(void) const{
+            	return _blocks_from_edge;
             }
 
-            void set_edge_status(const int &new_edge_status) {
-            	_edge_status = new_edge_status;
+            void set_blocks_from_edge(const unsigned int &new_blocks_from_edge) {
+            	_blocks_from_edge = new_blocks_from_edge;
             }
+
+            unsigned int xind(void){
+            	return _2Dindeces[0];
+            }
+
+            void set_xind(const unsigned int &new_xind){
+            	_2Dindeces[0] = new_xind;
+            }
+
+            unsigned int yind(void){
+				return _2Dindeces[1];
+			}
+
+			void set_yind(const unsigned int &new_yind){
+				_2Dindeces[1] = new_yind;
+			}
 
             std::map<UIndex, Vec<2> > local_neighbor_coords(void) const {
             	return _local_neighbor_coords;
@@ -447,6 +477,12 @@ namespace tsunamisquares {
             double max_lon(void) const {
                 return _max_lon;
             }
+            double dlon(void) const {
+				return _dlon;
+			}
+            double dlat(void) const {
+				return _dlat;
+			}
             double max_depth(void) const {
                 return _max_depth;
             }
@@ -485,13 +521,13 @@ namespace tsunamisquares {
             void indexNeighbors();
             void computeNeighbors(void);
             void computeNeighborCoords(void);
-            void computeEdgeStatus(void);
+            void assign2DIndeces(void);
             void fillToSeaLevel(void);
             void moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries);
             void computeDiffussionFracts(const double dt, const double D);
             void diffuseSquaresSpherical(void);
             void diffuseSquaresSchultz(const double dt);
-            void diffuseSquaresWard(const int ndiffuses);
+            void diffuseSquaresWard(const int ndiffuses, const bool absorbing_boundaries);
             void applyDiffusion(void);
             Vec<2> getAverageSlopeWard(const UIndex &square_id, const SquareIDSet &square_ids) const;
             Vec<2> fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids);

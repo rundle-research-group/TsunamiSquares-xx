@@ -274,7 +274,7 @@ void tsunamisquares::World::diffuseSquaresSchultz(const double dt) {
 }
 
 // Based on Ward's pair-wise smoothing method.  Our model has non-uniform square sizes, so we have to keep track of volume in a way he doesn't.
-void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
+void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses, const bool absorbing_boundaries) {
 
 
     for(int k=0; k<ndiffuses; k++){
@@ -306,8 +306,8 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
     	    // Initialize updated_heights and momenta, will use this to store the net height and momentum changes
 			lsit->second.set_updated_height( lsit->second.height() );
 			lsit->second.set_updated_momentum( lsit->second.momentum() );
-			// Only diffuse if there's water present
-			if (lsit->second.height() > SMALL_HEIGHT) {
+			// Only diffuse if there's water present, and if it's not an edge (if absorbing edges is turned on)
+			if (lsit->second.height() > SMALL_HEIGHT && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.blocks_from_edge()!=0))) {
 				// Compute the height-dependent factor for this square, constants taken from Ward
 				fact = 0.15*fmin(0.02+0.125*(lsit->second.height()/6000), 0.5);  //Ward: depth dependent smoothing might have to adjust
 																//max_depth()
@@ -319,7 +319,7 @@ void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses) {
 				for (id_it=neighborIDs.begin(); id_it!=neighborIDs.end(); ++id_it) {
 					nit = _squares.find(*id_it);
 
-					if(nit->second.height() > SMALL_HEIGHT){
+					if(nit->second.height() > SMALL_HEIGHT && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.blocks_from_edge()!=0))){
 						//if(fmin(lsit->second.height(), nit->second.height()) >= 200){
 							//conserve momentum
 							dmom = (nit->second.momentum() - lsit->second.momentum())*fact;
@@ -448,7 +448,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			lsit->second.set_updated_height(0.0);
 			lsit->second.set_updated_momentum(Vec<2>(0.0,0.0));
 			// Set acceleration based on the current slope of the water surface
-			if(absorbing_boundaries && lsit->second.edge_status()==0){
+			if(absorbing_boundaries && lsit->second.blocks_from_edge()>1){
 				updateAcceleration(lsit->first, ldoPlaneFit);
 			}else{
 				updateAcceleration(lsit->first, ldoPlaneFit);
@@ -465,7 +465,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			current_pos = squareCenter(lsit->first);
 			current_velo = lsit->second.velocity();
 
-			if(laccel_bool && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.edge_status()==0))){
+			if(laccel_bool && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.blocks_from_edge()>1))){
 				current_accel = lsit->second.accel();
 			}else{
 				current_accel = Vec<2>(0,0);
@@ -473,7 +473,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
 			// Move the square: calculate average velocity during motion, find azimuth of that vector, and move
 			//  each vertex of the square to it's new location on the sphere.  This forms a Ring, which intersects some number of
-			//  boxes in our rtree.
+			//  boxes in our immediate neighborhood.
 			new_velo = current_velo + current_accel*ldt;
 
 			//Catch velocities that run away due to bad local momentum conservation, etc.
@@ -648,19 +648,23 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
     std::map<UIndex, Square>::iterator sit;
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
 
+    	// Assign new heights
         sit->second.set_height(sit->second.updated_height());
 
-        Vec<2> veltoset = sit->second.updated_momentum()/(sit->second.mass());
+        // Do Ward's height damping at edges (does NOT conserve volume)
+        if(absorbing_boundaries && sit->second.blocks_from_edge()!=0){
 
+			double damped_height = fmax(sit->second.height()-squareLevel(sit->first)*sit->second.damping_factor(), 0);
+
+			sit->second.set_height(damped_height);
+        }
+
+        // Now assign new velocities
+        Vec<2> veltoset = sit->second.updated_momentum()/(sit->second.mass());
 
         // Here we're trying to catch bad velocities if they arrise.
         if(isnan(veltoset[0]) || isinf(veltoset[0]) || isnan(veltoset[1]) || isinf(veltoset[1])){
         	veltoset = Vec<2>(0, 0);
-        }
-
-        // Kill velocity on edge squares
-        if(absorbing_boundaries && sit->second.edge_status()==2){
-        	sit->second.set_velocity( Vec<2>(0.0, 0.0));
         }
 
         // Don't set any velcity or height to tiny amounts of water
@@ -669,6 +673,11 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
         }else{
             sit->second.set_velocity( Vec<2>(0.0, 0.0));
             sit->second.set_height(0);
+        }
+
+        // Kill velocity on edge squares
+        if(absorbing_boundaries && sit->second.blocks_from_edge()==0){
+        	sit->second.set_velocity( Vec<2>(0.0, 0.0));
         }
 
     }
@@ -1125,6 +1134,41 @@ void tsunamisquares::World::calcMaxDepth() {
     _max_depth = maxDepth;
 }
 
+
+void tsunamisquares::World::assign2DIndeces() {
+    std::map<UIndex, Square>::iterator sit;
+    unsigned int xind, yind;
+    float damping_factor;
+
+    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+    	// Give each square a 2d index
+    	xind = nearbyint((sit->second.xy()[0]-min_lon())/dlon());
+    	yind = nearbyint((sit->second.xy()[1]-min_lat())/dlat());
+		sit->second.set_xind(xind);
+		sit->second.set_yind(yind);
+
+		// Determine its discrete distance from the edge of the sim, calc damping factor from that
+		unsigned int xind_from_edge, yind_from_edge, from_right, from_top, from_edge;
+		from_right = (num_lons() - 1) - xind;
+		from_top = (num_lats() - 1) - yind;
+		xind_from_edge = std::min(xind, from_right);
+		yind_from_edge = std::min(yind, from_top);
+		from_edge = std::min(xind_from_edge, yind_from_edge);
+
+		sit->second.set_blocks_from_edge(from_edge);
+
+		if(from_edge < 15){
+			// Ward does height - level*(1-(0.9 + 0.1*from_edge/15.0)), but i'm just doing height-level*factor
+			damping_factor = 0.1*(1 - from_edge/15.0);
+			sit->second.set_damping_factor(damping_factor);
+		}
+    }
+
+}
+
+
+
+
 //Find minimum square side length in simulation
 void tsunamisquares::World::calcMinSpacing() {
 	std::map<UIndex, Square>::const_iterator sit;
@@ -1252,9 +1296,9 @@ tsunamisquares::UIndex tsunamisquares::World::whichSquare(const Vec<2> &location
 
 
 void tsunamisquares::World::indexNeighbors() {
+	// TODO: some of these could be combines instead of looping over all the squares multiple times
 	computeNeighbors();
 	computeNeighborCoords();
-	computeEdgeStatus();
 	calcMaxOverlapError();
 }
 
@@ -1388,51 +1432,6 @@ void tsunamisquares::World::computeNeighborCoords(void) {
     	}
 
     	sit->second.set_local_neighbor_coords(thisNeighborsAndCoords);
-    }
-
-}
-
-void tsunamisquares::World::computeEdgeStatus(void) {
-    std::map<UIndex, Square>::iterator sit;
-    SquareIDSet::iterator nit;
-    SquareIDSet neighbor_ids;
-
-    // Set edge status: 0 = active simulation, 1 = second to edge (kill acceleration), 2 = edge (no accel or movement)
-
-    // Find edge squares and directions that water in each square is not allowed to flow
-    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-        std::vector<bool>       new_invalid_directions(4, false);
-
-    	if(sit->second.left() == INVALID_INDEX){// || square(sit->second.left()).xyz()[2]>=0.0){
-        	new_invalid_directions[0] = true;
-        	sit->second.set_edge_status(2);
-        }
-        if(sit->second.right() == INVALID_INDEX){// || square(sit->second.right()).xyz()[2]>=0.0){
-        	new_invalid_directions[1] = true;
-        	sit->second.set_edge_status(2);
-        }
-        if(sit->second.bottom() == INVALID_INDEX){// || square(sit->second.bottom()).xyz()[2]>=0.0){
-        	new_invalid_directions[2] = true;
-        	sit->second.set_edge_status(2);
-        }
-        if(sit->second.top() == INVALID_INDEX){// || square(sit->second.top()).xyz()[2]>=0.0){
-        	new_invalid_directions[3] = true;
-        	sit->second.set_edge_status(2);
-        }
-
-        sit->second.set_invalid_directions(new_invalid_directions);
-    }
-
-    // Find second-to-edge squares
-    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-    	if(sit->second.edge_status()!=2){
-    		neighbor_ids = sit->second.get_valid_neighbors();
-    		for(nit=neighbor_ids.begin(); nit!=neighbor_ids.end(); ++nit){
-    			if(square(*nit).edge_status() == 2){
-    				sit->second.set_edge_status(1);
-    			}
-    		}
-    	}
     }
 
 }
@@ -2074,6 +2073,7 @@ int tsunamisquares::World::read_bathymetry_txt(const std::string &file_name) {
         new_square.set_id(i);
         new_square.read_bathymetry(in_file);
         new_square.set_box(dlon, dlat);
+
         _square_rtree.addPoint(new_square.xy(), new_square.id());
         _squares.insert(std::make_pair(new_square.id(), new_square));
     }
@@ -2090,7 +2090,8 @@ int tsunamisquares::World::read_bathymetry_txt(const std::string &file_name) {
     _max_lat = max_latlon.lat();
     _max_lon = max_latlon.lon();
 
-    // Find max depth and min cell spacing
+
+    assign2DIndeces();
     calcMinSpacing();
     calcMaxDepth();
 

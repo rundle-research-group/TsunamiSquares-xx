@@ -120,7 +120,7 @@ int main (int argc, char **argv) {
     // -------------------------------------------------------------------------------- //
     ///////                Simulation Initialization and Loading                   ///////
     // -------------------------------------------------------------------------------- //
-    // Read in the bathymetry data TODO: remove max depth calc from bathy reading and move to after the initial condition step
+    // Read in the bathymetry data TODO: remove max depth calc from indexNeighbors and move to after the initial condition step
     this_world.clear();
     std::cout << std::endl << "Reading..."   << bathy_file.c_str() << std::endl;
     this_world.read_bathymetry_chooser(bathy_file.c_str());
@@ -132,7 +132,7 @@ int main (int argc, char **argv) {
 	}
 
     // Index the neighbors by left/right/top etc.
-    std::cout << "Indexing neighbors......" << std::endl;
+    std::cout << "Indexing neighbors, calculating world properties......" << std::endl;
     this_world.indexNeighbors();
 
     // --------------------------------------------------------------------------------//
@@ -249,7 +249,7 @@ int main (int argc, char **argv) {
         // Diffuse (smooth) the squares
         if(diffuse_bool) {
 			//this_world.diffuseSquaresSchultz(dt, D);
-			this_world.diffuseSquaresWard(ndiffusions);
+			this_world.diffuseSquaresWard(ndiffusions, absorbing_boundaries);
         }
 
 
