@@ -1,0 +1,1 @@
+This folder is used by make to store intermediate files
