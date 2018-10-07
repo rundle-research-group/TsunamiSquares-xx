@@ -50,7 +50,7 @@ class simAnalyzer:
         self.sim_inundation_array = np.ma.masked_where(alt_ncVar[0] < 0, ever_has_water)
         
         
-    def make_grid_animation(self, FPS, DPI, zminmax=None, doBasemap=False):
+    def make_grid_animation(self, FPS, DPI, skip_frames=1, zminmax=None, doBasemap=False):
         
         save_file = self.save_file_prefix+"_grid.mp4"
         
@@ -113,8 +113,8 @@ class simAnalyzer:
     
         surface = None
         with writer.saving(fig, save_file, DPI):
-            for ind in range(int(N_STEP/2)):
-                index = ind*2
+            for ind in range(int(N_STEP/skip_frames)):
+                index = ind*skip_frames
                 # Get the subset of data corresponding to current time
                 this_level  = level_ncVar[index]
                 this_height = height_ncVar[index]
@@ -819,6 +819,8 @@ if __name__ == "__main__":
             help="Type of animation to make; birds-eye grid or cross-sectional verification against analytic solution")
     parser_animate.add_argument('--sim_file', required=True,
             help="Name of simulation file to analyze.")
+    parser_animate.add_argument('--skip_frames', type=int, required=False, default=1,
+            help="Will form animation from every N frame of simulation file.  Useful for long simulations.")
     parser_animate.add_argument('--zminmax', type=float, nargs=2, required=False,
             help="Bounds for water height color bar")
     parser_animate.add_argument('--use_basemap', action="store_true", required=False,
@@ -935,7 +937,7 @@ if __name__ == "__main__":
             if args.type == 'grid':
                 #zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
                 # Makes animation
-                this_sim.make_grid_animation(args.fps, args.dpi, zminmax = args.zminmax, doBasemap = args.use_basemap)
+                this_sim.make_grid_animation(args.fps, args.dpi, skip_frames = args.skip_frames, zminmax = args.zminmax, doBasemap = args.use_basemap)
             
             if args.type == 'xsection':
                 this_sim.make_crosssection_animation(args.fps, args.dpi)
