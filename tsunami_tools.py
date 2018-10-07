@@ -39,6 +39,8 @@ class simAnalyzer:
         #TODO: check for simulation that wraps around int date line.
         self.numlons, self.minlon, self.maxlon, self.meanlon = len(self.lons), self.lons.min(), self.lons.max(), self.lons.mean()
         self.numlats, self.minlat, self.maxlat, self.meanlat = len(self.lats), self.lats.min(), self.lats.max(), self.lats.mean()
+        self.lonrange = self.maxlon - self.minlon
+        self.latrange = self.maxlat - self.minlat
         self.dlon = abs(self.lons[1]-self.lons[0])
         self.dlat = abs(self.lats[1]-self.lats[0])      
         
@@ -302,38 +304,36 @@ class simAnalyzer:
         plt.close(1)
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw = {'width_ratios':[1, 3]})
         plt.sca(ax1)
+        plt.title("Comparison of Simulated \n and Observed Inundation")
         m = Basemap(projection='cyl',llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
                     llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='i')
-        #m.drawmeridians(np.linspace(self.minlon, self.maxlon, num=5.0), labels=[0,0,0,1], linewidth=0)
-        #m.drawparallels(np.linspace(self.minlat, self.maxlat, num=5.0), labels=[1,0,0,0], linewidth=0)
         #m.drawcoastlines(linewidth=0.5)
         
         cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['gray', 'maroon', 'blue', 'lime'], N=4)
+#        cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['white', 'gray', 'maroon', 'blue', 'lime'], N=5)
         
         map_ax = m.imshow(self.all_inundation_results, origin='upper', extent=[self.minlon, self.maxlon, self.maxlat, self.minlat], interpolation='nearest', cmap=cm)
         
         cbar = fig.colorbar(map_ax, ticks=[3/8., 9/8., 15/8., 21/8.])
-        cbar.ax.set_yticklabels(['Dry', 'Miss', 'False\nAlarm', 'Success'])
+#        cbar = fig.colorbar(map_ax, ticks=[3/10., 9/10., 15/10., 21/10., 27/10.])
+        cbar.ax.set_yticklabels(['Ocean', 'Dry', 'Miss', 'False\nAlarm', 'Success'])
 
         precision = hits/(hits + misses)
         recall = hits/(hits + falses)
-        bgraph0 = ax0.bar([1.1 , 2.1], [hits, falses], width=0.8)
-        bgraph1 = ax0.bar([1.1], [misses], bottom=[hits], width=0.8)
+        plt.sca(ax0)
+        bgraph0 = ax0.bar([1.5 , 2.5], [hits, falses], width=0.8)
+        bgraph1 = ax0.bar([1.5], [misses], bottom=[hits], width=0.8)
         ax0.set_xticks([1.5, 2.5], minor=False)
         ax0.set_xticklabels(["Observed\nInundation", "False\nAlarm"], minor=False)
-#        ax0.tick_params(which='both',      # both major and minor ticks are affected
-#                        bottom=False,      # ticks along the bottom edge are off
-#                        top=False,         # ticks along the top edge are off
-#                        labelbottom=False) # labels along the bottom edge are off
+        plt.ylabel("Number of Cells")
+        
         bgraph0[0].set_color('lime')
         bgraph0[1].set_color('blue')
         bgraph1[0].set_color('maroon')
         
-        ax0.annotate('Precision:\t {:0.3f}%\nRecall:\t {:0.3f}%'.format(100*hits/float(hits+misses), 100*hits/float(hits+falses)),
-            xytext=(0.8, 0.95), textcoords='axes fraction',
-            horizontalalignment='right', verticalalignment='top')
-        
-        plt.title("Comparison of Simulated and Observed Inundation")
+        #ax1.annotate('Precision: {:0.3f}\nRecall:      {:0.3f}'.format(100*precision, 100*recall), (self.meanlon, self.minlat+self.latrange*0.2))
+                     #xytext=(0.8, 0.95), textcoords='axes fraction',
+                     #horizontalalignment='right', verticalalignment='top')
         
         plt.tight_layout()
         
