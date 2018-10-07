@@ -329,11 +329,13 @@ class simAnalyzer:
         bgraph0[1].set_color('blue')
         bgraph1[0].set_color('maroon')
         
-#        ax0.annotate('Precision:\t {:0.3f}%\nRecall:\t {:0.3f}%'.format(100*hits/float(hits+misses), 100*hits/float(hits+falses)),
-#            xytext=(0.8, 0.95), textcoords='axes fraction',
-#            horizontalalignment='right', verticalalignment='top')
+        ax0.annotate('Precision:\t {:0.3f}%\nRecall:\t {:0.3f}%'.format(100*hits/float(hits+misses), 100*hits/float(hits+falses)),
+            xytext=(0.8, 0.95), textcoords='axes fraction',
+            horizontalalignment='right', verticalalignment='top')
         
-        plt.tight_layout()        
+        plt.title("Comparison of Simulated and Observed Inundation")
+        
+        plt.tight_layout()
         
         fill_suffix = ''
         if self.fill_bool: fill_suffix = '_filled'
