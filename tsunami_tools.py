@@ -316,7 +316,7 @@ class simAnalyzer:
         
         cbar = fig.colorbar(map_ax, ticks=[3/8., 9/8., 15/8., 21/8.])
 #        cbar = fig.colorbar(map_ax, ticks=[3/10., 9/10., 15/10., 21/10., 27/10.])
-        cbar.ax.set_yticklabels(['Ocean', 'Dry', 'Miss', 'False\nAlarm', 'Success'])
+        cbar.ax.set_yticklabels(['Dry', 'Miss', 'False\nAlarm', 'Success'])
 
         precision = hits/(hits + misses)
         recall = hits/(hits + falses)
