@@ -558,7 +558,7 @@ namespace tsunamisquares {
             int read_bathymetry_txt(const std::string &file_name);
             int read_bathymetry_netCDF(const std::string &file_name);
             int deformFromFile_txt(const std::string &file_name);
-            void deformFromFile_netCDF(const std::string &file_name);
+            void deformFromFile_netCDF(const std::string &file_name, const double &eq_height_multiplier);
             int write_file_kml(const std::string &file_name);
             void write_square_ascii(std::ostream &out_stream, const double &time, const UIndex &square_id) const;
             void initilize_netCDF_file(const std::string &file_name);

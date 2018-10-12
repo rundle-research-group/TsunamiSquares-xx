@@ -2331,7 +2331,7 @@ int tsunamisquares::World::deformFromFile_txt(const std::string &file_name) {
 }
 
 
-void tsunamisquares::World::deformFromFile_netCDF(const std::string &file_name) {
+void tsunamisquares::World::deformFromFile_netCDF(const std::string &file_name, const double &eq_height_multiplier) {
 
 	// Read in NetCDF
 	NcFile dataFile(file_name, NcFile::read);
@@ -2381,7 +2381,8 @@ void tsunamisquares::World::deformFromFile_netCDF(const std::string &file_name) 
 		lat_algarr[j] = lats_in[j];
 		for(int i=0; i<NLON; i++){
 			lon_algarr[i] = lons_in[i];
-			uplift_algarr[j*NLON+i]  = uplift_in[j][i];
+			// Here we multiply the uplift by eq_height_multiplier
+			uplift_algarr[j*NLON+i]  = eq_height_multiplier*uplift_in[j][i];
 			eastU_algarr[j*NLON+i]  = eastU_in[j][i];
 			northV_algarr[j*NLON+i]     = northV_in[j][i];
 		}

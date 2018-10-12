@@ -45,6 +45,7 @@ The parameter text file contains simulation parameters which may be changed with
 |bathy\_file | File with bathymetry / topography data|
 |initial\_conditions | Type of initial conditions for simulation. Choose from eq, bump, gauss, and saved|
 |deformation\_file | File name for initial seafloor uplift data from simulated earthquake (use with initial\_conditions  = eq)|
+|eq\_height\_multiplier | Multiplier for seafloor uplift provided by deformation file for the eq initial conditions|
 |bump\_height | Used when testing, produces small initial seafloor displacement (use with initial\_conditions  = bump)|
 |gauss\_height | Used when testing, height of initial gaussian pile of water (use with initial\_conditions  = gauss)|
 |gauss\_std | Used when testing, width of initial gaussian pile of water (use with initial\_conditions  = gauss)|
