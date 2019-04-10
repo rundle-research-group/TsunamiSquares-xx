@@ -1,5 +1,5 @@
-# TsunamiGlobe
-C++ library for modeling tsunamis from Virtual Quake simulated earthquakes using the Tsunami Squares method (Steven N. Ward).  Extended from c++ code written by Kasey W. Schultz and John Max Wilson (<https://github.com/johnmaxwilson/TsunamiSquares>) with intent to model a spherical or ellipsoidal Earth and improve stability.
+# TsunamiSquares++
+C++ tool for modeling tsunamis from Virtual Quake simulated earthquakes using the Tsunami Squares method (Steven N. Ward).  Extended from c++ code written by Kasey W. Schultz and John Max Wilson (<https://github.com/johnmaxwilson/TsunamiSquares>) with intent to model a spherical or ellipsoidal Earth and improve stability.
 
 ## Requirements
 NOAA ETOPO1 combined bathymetry and topology data not included, can be downloaded from <https://www.ngdc.noaa.gov/mgg/global/>  
@@ -29,7 +29,7 @@ To compile, navigate to the src/ directory and do
 You might have to modify the makefile to match your system.
 
 Run simulation with  
-`$ ./TsunamiGlobe parameter_file.txt`  
+`$ ./TsunamiSquares parameter_file.txt`  
 See below for how to contruct a parameter file.
 
 Visualizations, bathymetry subsets, and initial condition displacement fields can be created with tsunami_tools.py.  For usage options, do  

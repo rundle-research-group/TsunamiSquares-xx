@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017 John M. Wilson, Eric M. Heien, Kasey W. Schultz
+// Copyright (c) 2012-2019 John M. Wilson, Kasey W. Schultz
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),

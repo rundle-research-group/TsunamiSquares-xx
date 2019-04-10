@@ -12,7 +12,7 @@ OBJ = $(addprefix $(ODIR)/,$(_OBJ))
 $(ODIR)/%.o: %.cpp $(DEPS)
 	$(CXX) -c -o $@ $< $(LIBS) $(CXXFLAGS) 
 
-TsunamiGlobe: $(OBJ)
+TsunamiSquares: $(OBJ)
 	$(CXX) -o $@ $^ $(LIBS) $(CXXFLAGS)
 
 .PHONY: clean
