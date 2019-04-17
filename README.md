@@ -72,3 +72,4 @@ The parameter text file contains simulation parameters which may be changed with
 |num\_threads | How many threads to use during multiprocessing blocks|
 |check\_sim\_health | Whether to check for NaNs and infs each time step and break the sim with helpful info if found |
 |absorbing\_boundaries | Whether to use absorbing boundary conditions to avoid relections off simulation bounds |
+|accel\_multiplier | Multiplicative prefactor for gravitational acceleration and max velocity |

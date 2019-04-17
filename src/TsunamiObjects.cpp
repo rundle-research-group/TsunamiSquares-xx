@@ -412,7 +412,7 @@ void tsunamisquares::World::applyDiffusion(void){
 
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
-void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries) {
+void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries, const double accel_multiplier) {
 
     // Initialize the updated height and velocity to zero. These are the containers
     // used to keep track of the distributed height/velocity from moving squares.
@@ -449,7 +449,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			lsit->second.set_updated_momentum(Vec<2>(0.0,0.0));
 			// Set acceleration based on the current slope of the water surface
 			if(absorbing_boundaries && lsit->second.blocks_from_edge()>1){
-				updateAcceleration(lsit->first, ldoPlaneFit);
+				updateAcceleration(lsit->first, ldoPlaneFit, accel_multiplier);
 			}else{
 				updateAcceleration(lsit->first, ldoPlaneFit);
 			}
@@ -477,8 +477,8 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			new_velo = current_velo + current_accel*ldt;
 
 			//Catch velocities that run away due to bad local momentum conservation, etc.
-			if(new_velo.mag()>sqrt(fabs(G*max_depth()))){
-				new_velo = new_velo*sqrt(fabs(G*max_depth()))/new_velo.mag();
+			if(new_velo.mag()>sqrt(fabs(accel_multiplier*G*max_depth()))){
+				new_velo = new_velo*sqrt(fabs(accel_multiplier*G*max_depth()))/new_velo.mag();
 			}
 
 
@@ -684,7 +684,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
     
 }
 
-void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bool doPlaneFit) {
+void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bool doPlaneFit, const double accel_multiplier) {
     std::map<UIndex, Square>::iterator square_it = _squares.find(square_id);
     Vec<2> grav_accel, friction_accel, new_accel, gradient;
     
@@ -693,7 +693,7 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bo
         // gravitational acceleration due to the slope of the water surface
         gradient = getGradient(square_id, doPlaneFit);
         
-        grav_accel = gradient*G*(-1.0);
+        grav_accel = gradient* accel_multiplier*G*(-1.0);
 
         // Hard cutoff limit to 1 G of accel
         if(isnan(grav_accel[0]) || isinf(grav_accel[0])){

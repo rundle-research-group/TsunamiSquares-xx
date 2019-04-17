@@ -121,6 +121,9 @@ int main (int argc, char **argv) {
 	// Use absorbing boundary conditions to avoid reflections off simulation boundaries
 	bool    absorbing_boundaries            = atof(param_values["absorbing_boundaries"].c_str());
 
+	// Multiplicative prefactor for gravitational acceleration and max velocity
+	double    accel_multiplier = atof(param_values["accel_multiplier"].c_str());
+
 
 	omp_set_num_threads(num_threads);
     
@@ -185,7 +188,7 @@ int main (int argc, char **argv) {
     //double dt = (double) (int) this_world.square(0).Lx()*this_world.square(0).Ly()/(2*D); //seconds
     // Use file-provided time step, Check time step for minimum against shallow water wave speed.
 	double dt;
-    double wave_speed = sqrt(abs(G*this_world.max_depth()));
+    double wave_speed = sqrt(abs(accel_multiplier*G*this_world.max_depth()));
     double maxDt = this_world.min_spacing() / wave_speed;
 
     if(dt_param > maxDt){
@@ -250,7 +253,7 @@ int main (int argc, char **argv) {
 
         // Move the squares
         if(move_bool) {
-        	this_world.moveSquares(dt, accel_bool, doPlaneFit, absorbing_boundaries);
+        	this_world.moveSquares(dt, accel_bool, doPlaneFit, absorbing_boundaries, accel_multiplier);
         }
 
         // Diffuse (smooth) the squares

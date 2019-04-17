@@ -523,7 +523,7 @@ namespace tsunamisquares {
             void computeNeighborCoords(void);
             void assign2DIndeces(void);
             void fillToSeaLevel(void);
-            void moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries);
+            void moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries, const double accel_multiplier);
             void computeDiffussionFracts(const double dt, const double D);
             void diffuseSquaresSpherical(void);
             void diffuseSquaresSchultz(const double dt);
@@ -532,7 +532,7 @@ namespace tsunamisquares {
             Vec<2> getAverageSlopeWard(const UIndex &square_id, const SquareIDSet &square_ids) const;
             Vec<2> fitPointsToPlane(const UIndex &this_id, const SquareIDSet &square_ids);
             Vec<2> getGradient(const UIndex &square_id, const bool doPlaneFit);
-            void updateAcceleration(const UIndex &square_id, const bool doPlaneFit);
+            void updateAcceleration(const UIndex &square_id, const bool doPlaneFit, const double accel_multiplier);
             void deformBottom(const UIndex &square_id, const double &height_change);
             UIndex whichSquare(const Vec<2> &location) const;
             void flattenBottom(const double &depth);
