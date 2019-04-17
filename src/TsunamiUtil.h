@@ -47,9 +47,9 @@ using namespace GeographicLib;
 #include <boost/geometry/geometries/polygon.hpp>
 #include <boost/geometry/index/rtree.hpp>
 #include <boost/foreach.hpp>
-
 namespace bg = boost::geometry;
 namespace bgi = boost::geometry::index;
+
 #include <netcdf>
 using namespace netCDF;
 
