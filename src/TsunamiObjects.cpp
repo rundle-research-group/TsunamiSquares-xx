@@ -451,7 +451,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			if(absorbing_boundaries && lsit->second.blocks_from_edge()>1){
 				updateAcceleration(lsit->first, ldoPlaneFit, accel_multiplier);
 			}else{
-				updateAcceleration(lsit->first, ldoPlaneFit);
+				updateAcceleration(lsit->first, ldoPlaneFit, accel_multiplier);
 			}
 
 
