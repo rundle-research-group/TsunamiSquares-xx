@@ -47,9 +47,10 @@ using namespace GeographicLib;
 #include <boost/geometry/geometries/polygon.hpp>
 #include <boost/geometry/index/rtree.hpp>
 #include <boost/foreach.hpp>
-
+#include <boost/function_output_iterator.hpp>
 namespace bg = boost::geometry;
 namespace bgi = boost::geometry::index;
+
 #include <netcdf>
 using namespace netCDF;
 
@@ -583,16 +584,42 @@ namespace tsunamisquares {
     		};
 
     		std::set<unsigned int> getRingIntersects(const ring_spheq &ring) const {
-				std::vector<value> result_n;
-				std::set<unsigned int> intersectIDs;
+		  std::vector<value> result_n;
+		  std::set<unsigned int> intersectIDs;
+		  
+		  _rtree.query(bgi::intersects(ring), std::back_inserter(result_n));
+		  std::cout<<bg::area(ring)<<std::endl;
+		  BOOST_FOREACH(value const& v, result_n)
+		    {
+		      intersectIDs.insert(v.second);
+		    }
+		  return intersectIDs;
+		};
+		
+		std::set<unsigned int> getIntersectsManual(std::vector<double> &boundaries) const {
+		  
+		  std::set<unsigned int> intersectIDs;
+		  double lonn;
+		  double latt;
+		  
+		  _rtree.query(bgi::satisfies([](value const&){ return true; }), boost::make_function_output_iterator([&](value const& v) mutable {
 
-				_rtree.query(bgi::intersects(ring), std::back_inserter(result_n));
-				BOOST_FOREACH(value const& v, result_n)
-					intersectIDs.insert(v.second);
-				return intersectIDs;
-			};
+			lonn = v.first.get<0>();
+			latt = v.first.get<1>();
 
-    		std::set<unsigned int> getBoxIntersects(const box_spheq &box) const {
+			//std::cout<<lonn<<" "<<latt<<std::endl;
+			//std::cout<<boundaries.at(0)<<" "<<boundaries.at(1)<<" "<<boundaries.at(2)<<" "<<boundaries.at(3)<<std::endl;
+			
+			if (lonn>boundaries.at(0) && lonn<boundaries.at(1) && latt>boundaries.at(2) && latt<boundaries.at(3)) {
+			  intersectIDs.insert(v.second);
+			}
+
+		      }));
+
+		  return intersectIDs;
+		};
+		
+		std::set<unsigned int> getBoxIntersects(const box_spheq &box) const {
 				std::vector<value> result_n;
 				std::set<unsigned int> intersectIDs;
 

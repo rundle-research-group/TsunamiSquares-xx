@@ -53,8 +53,7 @@ void tsunamisquares::World::fillToSeaLevel(void) {
 
 bool tsunamisquares::World::checkSimHealth(void) {
 	bool isHealthy = true;
-    std::map<UIndex, Square>::iterator sit;
-
+    std::map<UIndex, Square>::iterator sit;	
 	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
 		if(isnan(sit->second.height())      || isinf(sit->second.height())      || sit->second.height() < 0 ||
 		   isnan(sit->second.velocity()[0]) || isinf(sit->second.velocity()[0]) ||
@@ -270,152 +269,461 @@ void tsunamisquares::World::diffuseSquaresSchultz(const double dt) {
     }
 
     //Applies changes and repairs over-diffused squares
-    applyDiffusion();
+    applyDiffusion(true);
 }
+/*
+//New method of smoothing to avoid attenuation of the wave and energy loss
+void tsunamisquares::World::smoothDave(const int ndiffuses){
 
+
+
+
+}
+*/
 // Based on Ward's pair-wise smoothing method.  Our model has non-uniform square sizes, so we have to keep track of volume in a way he doesn't.
-void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses, const bool absorbing_boundaries) {
+void tsunamisquares::World::diffuseSquaresWard(const int ndiffuses, const bool absorbing_boundaries, const bool conserve_energy) {
+  
+  //while(prevenergy>startenergy){
+  for(int ll=0; ll<ndiffuses; ll++){
+    //std::cout<<"\n"<<prevenergy<<" "<<startenergy<<std::endl;
+    //std::cout<<newPE<<" "<<newKE<<std::endl;
+#pragma omp parallel
+    {
+      std::map<UIndex, Square>::iterator  lsit;
+      SquareIDSet                         neighborIDs;
+      std::map<UIndex, Square>::iterator  nit;
+      long double                              volume_change, new_level, add_height, height_change;
+      long double								fact, diff, factslope, ratioo, tt, s, cc, extra, fixedc;
+      Vec<2>                              momentum_change;
+      Vec<2>								dmom, dvel;
+      SquareIDSet::iterator               id_it;
+      std::map<UIndex, Square>::iterator mit;
+      double ht, hb, hl, hr, hc, fac, hl2, hr2, ht2, hb2, hl3, hr3, ht3, hb3;
+      double vert_dist, top_horiz_dist, bottom_horiz_dist, horiz_dist;
+      Vec<2> center;
+	
+	
+      std::map<UIndex, long double> local_height_changes;
+      std::map<UIndex, Vec<2> > local_momentum_changes;
+      for (UIndex i = 0; i < _squares.size(); i++){
+	local_height_changes[i] = 0.0;
+	local_momentum_changes[i] = Vec<2>(0.0, 0.0);
+      }
+	
+	
+#pragma omp for
+	
+      for (UIndex i = 0; i < _squares.size(); i++){
+	lsit = _squares.find(i);
+
+	center = lsit->second.xy();
+	vert_dist   = bg::distance(point_spheq(center[0], center[1]-_dlat/2), point_spheq(center[0], center[1]+_dlat/2));
+	top_horiz_dist    = bg::distance(point_spheq(center[0]-_dlon/2, center[1]+_dlat/2), point_spheq(center[0]+_dlon/2, center[1]+_dlat/2));
+	bottom_horiz_dist = bg::distance(point_spheq(center[0]-_dlon/2, center[1]-_dlat/2), point_spheq(center[0]+_dlon/2, center[1]-_dlat/2));
+	horiz_dist = fabs(top_horiz_dist)/2+fabs(bottom_horiz_dist)/2;
+
+	// Initialize updated_heights and momenta, will use this to store the net height and momentum changes
+	lsit->second.set_updated_height( lsit->second.height() );
+	lsit->second.set_updated_momentum( lsit->second.velocity() );
+	// Only diffuse if there's water present, and if it's not an edge (if absorbing edges is turned on)
+	if (lsit->second.height() > SMALL_HEIGHT && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.blocks_from_edge()!=0))) {
+	  // Compute the height-dependent factor for this square, constants taken from Ward
+	  fact = 0.15*fmin(0.02+0.125*(lsit->second.height()/6000), 0.50);  //Ward: depth dependent smoothing might have to adjust
+	  fact = 0.05; //0.0015; //1D
+	  fact = 0.05*dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area());
+	  factslope = 0.05;
+	  //ratioo = 0.109; //1.2 const c
+	  //ratioo = 0.102; //1.4 const c
+	  //ratioo = 0.102; //1.6 const c
+	  //ratioo = 0.115;
+	  ratioo = 0.12;
+	  cc = 0.8;
+	  fixedc = 1.4;
+	  extra = 0.8;
+	  
+	  height_change = 0;
+
+	  // Go through neighbors to check amount to be exchanged
+	  neighborIDs = lsit->second.get_valid_nearest_neighbors();
+	  for (id_it=neighborIDs.begin(); id_it!=neighborIDs.end(); ++id_it) {
+	    nit = _squares.find(*id_it);
 
 
-    for(int k=0; k<ndiffuses; k++){
+	    if(nit->second.height() > SMALL_HEIGHT && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.blocks_from_edge()!=0))){
+	      
+	      height_change = 0;
+	      dvel = Vec<2>(0.0,0.0);
+	      //dont exchange water unless the surface of the water is heigher than the land of the neighbor
+	      if((lsit->second.height()+lsit->second.xyz()[2])>nit->second.xyz()[2] || (nit->second.height()+nit->second.xyz()[2])<lsit->second.xyz()[2]){
 
-	#pragma omp parallel
-	{
-		std::map<UIndex, Square>::iterator  lsit;
-		SquareIDSet                         neighborIDs;
-		std::map<UIndex, Square>::iterator  nit;
-		double                              volume_change, new_level, add_height, height_change;
-		double								fact, diff;
-		Vec<2>                              momentum_change;
-		Vec<2>								dmom, dvel;
-		SquareIDSet::iterator               id_it;
-
-
-		std::map<UIndex, double> local_height_changes;
-		std::map<UIndex, Vec<2> > local_momentum_changes;
-		for (UIndex i = 0; i < _squares.size(); i++){
-			local_height_changes[i] = 0.0;
-			local_momentum_changes[i] = Vec<2>(0.0, 0.0);
+		//finding individualized smoothing factors based on their t/tmax values and the differing dx and dy values of each square
+	      if(*id_it==lsit->second.left() || *id_it==lsit->second.right()){
+		//manual fit to find relationship between t/tmax and fact
+		fact = 0.12314*pow(dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist),2) + 0.0459*dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist);
+		//using a constant add then using manually determined relationship of fact per t/tmax, giving factslope
+		fact = factslope*dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist);
+		//using a constant C_final to determine relationship between fact and t/tmax. f/(tt*a)=ratioo. to keep C_final constant: a=s+tt where s is surplus above 1
+		fact = ratioo*(dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist))*((dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist))+0.02);
+		//using a varying C_final to determine relationship between fact and t/tmax. f/(tt*a)=ratioo. to keep relationship between variables: a=0.25*tt+tt where s is surplus above 1 and equals 0.25*tt
+		tt = dtt*sqrt(lsit->second.height()*G)/(sqrt(lsit->second.area()*horiz_dist/vert_dist));
+		s = cc-tt*(cc-0.2)/0.8;
+		s = -0.1;
+		extra = fixedc-(1-tt);
+		fact = ratioo*tt*(tt+s);
+		fact = ratioo*tt*(extra);
+		if(conserve_energy){fact=0.1;} //used to smooth initial condition
+		height_change = fact*(squareLevel(nit->first) - squareLevel(lsit->first));
+	      }
+	      if(*id_it==lsit->second.bottom() || *id_it==lsit->second.top()){
+		fact = 0.12314*pow(dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist),2) + 0.0459*dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist);
+		fact = factslope*dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist);
+		fact = ratioo*(dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist))*((dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist))+0.02);
+		tt = dtt*sqrt(lsit->second.height()*G)/(sqrt(lsit->second.area()*vert_dist/horiz_dist));
+		s = cc-tt*(cc-0.2)/0.8;
+		s = -0.1;
+		extra = fixedc-(1-tt);
+		fact = ratioo*tt*(tt+s);
+		fact = ratioo*tt*(extra);
+		if(conserve_energy){fact=0.1;} //used to smooth initial condition
+		height_change = fact*(squareLevel(nit->first) - squareLevel(lsit->first));
+	      }
+	      
+	      // Make sure there's water enough to give (or take) as calculated.
+	      if(height_change >= 0){
+		if(height_change < nit->second.height()){
+		  volume_change = height_change * nit->second.area();
+		}else{
+		  volume_change = nit->second.volume();
 		}
-
-
-	#pragma omp for
-		for (UIndex i = 0; i < _squares.size(); i++){
-			lsit = _squares.find(i);
-
-    	    // Initialize updated_heights and momenta, will use this to store the net height and momentum changes
-			lsit->second.set_updated_height( lsit->second.height() );
-			lsit->second.set_updated_momentum( lsit->second.momentum() );
-			// Only diffuse if there's water present, and if it's not an edge (if absorbing edges is turned on)
-			if (lsit->second.height() > SMALL_HEIGHT && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.blocks_from_edge()!=0))) {
-				// Compute the height-dependent factor for this square, constants taken from Ward
-				fact = 0.15*fmin(0.02+0.125*(lsit->second.height()/6000), 0.5);  //Ward: depth dependent smoothing might have to adjust
-																//max_depth()
-				//simulate multiple applications of smoothing sweeps, instead of actually looping multiple times
-				//fact = (1-pow(1-fact, ndiffuses));
-
-				// Go through neighbors to check amount to be exchanged
-				neighborIDs = lsit->second.get_valid_nearest_neighbors();
-				for (id_it=neighborIDs.begin(); id_it!=neighborIDs.end(); ++id_it) {
-					nit = _squares.find(*id_it);
-
-					if(nit->second.height() > SMALL_HEIGHT && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.blocks_from_edge()!=0))){
-						//if(fmin(lsit->second.height(), nit->second.height()) >= 200){
-							//conserve momentum
-							dmom = (nit->second.momentum() - lsit->second.momentum())*fact;
-							local_momentum_changes[nit->first] -= dmom;
-							local_momentum_changes[lsit->first] += dmom;
-						/*}else{//TODO: smooth velocities without using momentum as a proxy for shallow water
-							//  Smoothing velocities directly for shallow water
-							//  Of course, we actually update momenta, so we need to translate through that
-							//  *doesn't conserve momentum
-							dvel = (nit->second.velocity() - lsit->second.velocity())*fact;
-
-							//Non-omp verion nit->second.set_updated_momentum(nit->second.velocity() - dvel);
-							//Non-omp version lsit->second.set_updated_momentum(lsit->second.velocity() + dvel);
-
-							// These masses are from before the diffusion step, so the momentum transfered here will result in velocity changes that aren't
-							// quite right.  Let's try it, if it proves pathological we'll readdress it.
-							local_momentum_changes[nit->first] -= dvel*nit->second.mass();
-							local_momentum_changes[lsit->first] += dvel*lsit->second.mass();
-						}*/
-
-						height_change = fact*(squareLevel(nit->first) - squareLevel(lsit->first));
-						// Make sure there's water enough to give (or take) as calculated.
-						if(height_change >= 0){
-							if(height_change < nit->second.height()){
-								volume_change = height_change * nit->second.area();
-							}else{
-								volume_change = nit->second.volume();
-							}
-						}
-						if(height_change < 0){
-							if(-height_change < lsit->second.height()){
-								volume_change = height_change*lsit->second.area();
-							}else{
-								volume_change = -lsit->second.volume();
-							}
-						}
-
-						local_height_changes[nit->first] -= volume_change/nit->second.area();
-						local_height_changes[lsit->first] += volume_change/lsit->second.area();
-					}//end if neighbor has water
-				}//end loop over neighbors
-			}//end if this square has water
-		}//end parallel for loop over squares
-
-	#pragma omp critical
-		{
-			// Here is where we combine all local updated heights and momenta into the global updated values
-			for (lsit=_squares.begin(); lsit!=_squares.end(); ++lsit) {
-				lsit->second.set_updated_height(lsit->second.updated_height()      + local_height_changes[lsit->first]);
-				lsit->second.set_updated_momentum( lsit->second.updated_momentum() + local_momentum_changes[lsit->first]);
-			}
+	      }
+	      if(height_change < 0){
+		if(-height_change < lsit->second.height()){
+		  volume_change = height_change*lsit->second.area();
+		}else{
+		  volume_change = -lsit->second.volume();
 		}
+	      }
 
-	}//end parallel block
+	      local_height_changes[nit->first] -= volume_change/nit->second.area();
+	      local_height_changes[lsit->first] += volume_change/lsit->second.area();
+	      
 
-		//Applies changes and repairs over-diffused squares
-		applyDiffusion();
+	      //momentum changes that are derived from height changes
+	      if(volume_change>=0){
+		dmom = nit->second.momentum()*((volume_change/nit->second.area())/nit->second.height());
+	      }
+	      else{
+		dmom = lsit->second.momentum()*((volume_change/lsit->second.area())/lsit->second.height());
+	      }
+	      //dmom = (nit->second.momentum() - lsit->second.momentum())*fact;
+	    
+	      //local_momentum_changes[nit->first] -= dmom;
+	      //local_momentum_changes[lsit->first] += dmom;
 
-	}//end loop over diffusion sweeps
-}
+	      //does it through velocity only
+	      if(*id_it==lsit->second.left() || *id_it==lsit->second.right()){
+		fact = 0.12314*pow(dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist),2) + 0.0459*dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist); 
+		fact = factslope*dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist);
+		fact = ratioo*(dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist))*((dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*horiz_dist/vert_dist))+0.02);
+		tt = dtt*sqrt(lsit->second.height()*G)/(sqrt(lsit->second.area()*horiz_dist/vert_dist));
+		s = cc-tt*(cc-0.2)/0.8;
+		s = -0.1;
+		extra = fixedc-(1-tt);
+		fact = ratioo*tt*(tt+s);
+		fact = ratioo*tt*(extra);
+		if(conserve_energy){fact=0.1;} //used to smooth initial condition
+		dvel = (nit->second.velocity() - lsit->second.velocity())*fact;
+	      }
+	      if(*id_it==lsit->second.bottom() || *id_it==lsit->second.top()){
+		fact = 0.12314*pow(dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist),2) + 0.0459*dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist);
+		fact = factslope*dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist);
+		fact = ratioo*(dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist))*((dtt*sqrt(lsit->second.height()*G)/sqrt(lsit->second.area()*vert_dist/horiz_dist))+0.02);
+		tt = dtt*sqrt(lsit->second.height()*G)/(sqrt(lsit->second.area()*vert_dist/horiz_dist));
+		s = cc-tt*(cc-0.2)/0.8;
+		s = -0.1;
+		extra = fixedc-(1-tt);
+		fact = ratioo*tt*(tt+s);
+		fact = ratioo*tt*(extra);
+		if(conserve_energy){fact=0.1;} //used to smooth initial condition
+		dvel = (nit->second.velocity() - lsit->second.velocity())*fact;
+	      }
 
-void tsunamisquares::World::applyDiffusion(void){
+	      }
+	      
+      	      //local_momentum_changes[nit->first] -= dvel*nit->second.mass();
+	      //local_momentum_changes[lsit->first] += dvel*lsit->second.mass();
+
+	      //does it with velocity instead
+	      local_momentum_changes[nit->first] -= dvel;
+	      local_momentum_changes[lsit->first] += dvel;
+     
+		  
+	    }//end if neighbor has water
+	  }//end loop over neighbors
+	
+	}//end if this square has water
+      }//end parallel for loop over squares
+      
+    
+#pragma omp critical
+      {
+	// Here is where we combine all local updated heights and momenta into the global updated values
+	for (lsit=_squares.begin(); lsit!=_squares.end(); ++lsit) {
+	  lsit->second.set_updated_height(lsit->second.updated_height()      + local_height_changes[lsit->first]);
+	  lsit->second.set_updated_momentum( lsit->second.updated_momentum() + local_momentum_changes[lsit->first]);
+	}
+      }
+
+    }//end parallel block
+
+    //Applies changes and repairs over-diffused squares
+    applyDiffusion(false);
+    computeenergy(false);
+  }
+}//end loop over diffusion sweeps
+
+
+void tsunamisquares::World::applyDiffusion(const bool conserve_energy){
 	// Reset the heights and velocities based on the changes, also catch any heights being set to less than 0 and correct.
 	//  we accumulate all this water that never should've been diffused in the first place so everything can be renormalized to conserve mass.
 	//  TODO: This method of correcting for over-diffusing water doesn't strictly conserve momentum, and doesn't conserve volume locally (only globally)
 	double overdrawn_volume = 0.0;
+	double totalvol = 0.0;
+	double totalvol2 = 0.0;
+	double totalvol3 = 0.0;
+	double totall = 0.0;
+	double overdrawn = 0.0;
+	double dw = 0;
+	double heightinc = 0.0;
+	double energyratio = 1.0;
+	double penergy = prevenergy;
+	double velx = 0;
+	double vely = 0;
+	SquareIDSet neighborIDss;
+	SquareIDSet::iterator id_its;
+	std::map<UIndex, Square>::iterator lsits;
+	std::map<UIndex, Square>::iterator nits;
+	int sizee;
 	std::map<UIndex, Square>::iterator  sit;
+	
 	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-		if( sit->second.updated_height() < SMALL_HEIGHT){
+	  //added because water is still being overdrawn from land. Not sure how since I turned off smoothing on land and 1 square next to land
+
+	  if( sit->second.updated_height() < 0){
+	                overdrawn = sit->second.updated_height();
 			overdrawn_volume += sit->second.updated_height()*sit->second.area();
 			sit->second.set_updated_height(0.0);
-		}
+			sit->second.set_updated_momentum(Vec<2>(0.0,0.0));
 
-		sit->second.set_height( sit->second.updated_height() );
+			continue;
+			
+			if (overdrawn<0) {
+			  neighborIDss = sit->second.get_valid_nearest_neighbors();
+			  sizee=4;
+			  double prevsizee = 0;
+			  int c = 0;
+			  while (sizee!=prevsizee) {
+			    prevsizee = sizee;
+			    sizee = 0;
+			    for (id_its=neighborIDss.begin(); id_its!=neighborIDss.end(); ++id_its) {
+			      nits = _squares.find(*id_its);
+			      heightinc = (-1*overdrawn/prevsizee)*sit->second.area()/nits->second.area();
+			      if (nits->second.updated_height()>heightinc) {
+				sizee++;
+			      }
+			    }
+			    //std::cout<<c++<<" "<<sizee<<" "<<prevsizee<<std::endl;
+			  }
+			  if (sizee==0) {
+			    //std::cout<<"Not enough water in surrounding squares to take from"<<std::endl;
+			    sizee = 1;
+			  }
+			  for (id_its=neighborIDss.begin(); id_its!=neighborIDss.end(); ++id_its) {
+			    nits = _squares.find(*id_its);
+			    heightinc = (-1*overdrawn/sizee)*sit->second.area()/nits->second.area();
+			    if (nits->second.updated_height()>heightinc) {
+			      //std::cout << std::setprecision(5) << std::fixed;
+			      //std::cout<<"ID: "<<nits->second.id()<<" "<<heightinc<<std::endl;
+			      //std::cout<<nits->second.updated_height()-heightinc<<" height of square "<<nits->second.xy()[0]<<","<<nits->second.xy()[1]<<": "<<nits->second.updated_height()<<" "<<c<<" out of "<<sizee<<std::endl;
+			      //std::cout << std::setprecision(0) << std::fixed;
+			      dw = nits->second.updated_height();
+			      nits->second.set_updated_height(nits->second.updated_height()-heightinc);
+			      totall+=nits->second.area()*heightinc;
+			      //std::cout<<nits->second.area()*(nits->second.updated_height()-dw)<<std::endl;
+			    }
+			    else if (sizee==1) {
+			      //std::cout << std::setprecision(5) << std::fixed;
+			      //std::cout<<"not enough water to draw from "<<nits->second.updated_height()<<" "<<heightinc<<" " <<nits->second.updated_height()-heightinc<<" "<<nits->second.xy()[0]<<" "<<nits->second.xy()[1]<<" "<<c<<" out of "<<sizee<<std::endl;
+			      //std::cout << std::setprecision(10) << std::fixed;
+			      //std::cout<<"here "<<nits->second.updated_height()<<" "<<heightinc<<std::endl;
+			      //std::cout << std::setprecision(0) << std::fixed;
+			    }
+			  }
+			
+			}
+	  }		
+	  
+	  totalvol3+=sit->second.height()*sit->second.area();
+	  
+	  //sit->second.set_height( sit->second.updated_height() );
+	  /*
+	  Vec<2> veltoset = sit->second.updated_momentum()/(sit->second.mass());
 
-		if(sit->second.height() > SMALL_HEIGHT){
-			sit->second.set_velocity( sit->second.updated_momentum() / sit->second.mass());
-		}else{
-			sit->second.set_velocity(Vec<2>(0.0,0.0));
-			sit->second.set_height(0.0);
-		}
-
+	  if(sit->second.height() > SMALL_HEIGHT){
+	    double cutoff = 100000000000000;
+	    if(veltoset[0]>cutoff || veltoset[0]<-1*cutoff) {
+	      if(veltoset[0]>0) {
+		velx = cutoff;
+	      }
+	      else{
+		velx = -1*cutoff;
+	      }
+	    }
+	    else {
+	      velx = veltoset[0];
+	    }
+	    if(veltoset[1]>cutoff || veltoset[1]<-1*cutoff) {
+	      if(veltoset[1]>0) {
+		vely = cutoff;
+	      }
+	      else {
+		vely = -1*cutoff;
+	      }
+	    }
+	    else {
+	      vely = veltoset[1];
+	    }
+	    sit->second.set_velocity( Vec<2>(velx,vely) );
+	  }else{
+	    sit->second.set_velocity(Vec<2>(0.0,0.0));
+	    sit->second.set_height(0.0);
+	  }
+	  */
+	  totalvol+=sit->second.height()*sit->second.area();
+	   
 	}
+
+
+	//sets the updated heights and velocities to the actual heights and velocities
 	overdrawn_volume = fabs(overdrawn_volume);
-	// Scale all the water to conserve mass after we fixed negative volumes
 	for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-		sit->second.set_height( sit->second.height()*total_volume()/(total_volume() - overdrawn_volume) );
+	  //sit->second.set_height( sit->second.height()*totalvol3/totalvol);//*total_volume()/(total_volume() - overdrawn_volume) );
+	  totalvol2+=sit->second.height()*sit->second.area();
+	  if(sit->second.height() > SMALL_HEIGHT){
+	    //sit->second.set_velocity(sit->second.updated_momentum() / sit->second.mass()); //does it through momentum
+	    sit->second.set_velocity(sit->second.updated_momentum());
+	  }else{
+	    sit->second.set_velocity(Vec<2>(0.0,0.0));
+	    sit->second.set_height(0.0);
+	  }
+	  sit->second.set_height(sit->second.updated_height());
+
 	}
+
+	//rescaling velocities to account for lost energy throughout the smoothing process
+	if(conserve_energy==true){
+	  double newenergy = computeenergy(false);
+	  if (penergy>beforemoveE) {
+	    penergy = beforemoveE;
+	  }
+	  penergy = beforemoveE;
+	  energyratio = newenergy/penergy;
+	  std::cout<<"energy ratio: "<<energyratio<<std::endl;
+
+	  double scalingfactor = (penergy-newPE)/newKE;
+	  if (scalingfactor<0 || newKE==0) {scalingfactor=0;}
+	  std::cout<<"scaling factor: "<<scalingfactor<<std::endl;
+	  double velocityfactor = sqrt(scalingfactor);
+
+	  for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+	    if(sit->second.height() > SMALL_HEIGHT){ 
+	      sit->second.set_velocity((sit->second.momentum() / sit->second.mass())*velocityfactor);
+	    }else{
+	      sit->second.set_velocity(Vec<2>(0.0,0.0));
+	      sit->second.set_height(0.0);
+	    }
+	  }
+	}
+	/*
+	//std::cout << std::setprecision(30) << std::fixed;
+	std::cout<<"total subtracted "<<totall<<std::endl;
+	std::cout << std::setprecision(0) << std::fixed;
+	//std::cout<<total_volume()/(total_volume() - overdrawn_volume)<<std::endl;
+	std::cout<<"before adding water : "<<totalvol3<<" "<<" after adding water: "<<totalvol2<<" difference: "<<totalvol2-totalvol3<<std::endl;
+	*/
+}
+
+double tsunamisquares::World::computeenergy(bool verbose) {
+  double tot = 0;
+  double totKE = 0;
+  double totPE = 0;
+  double density = 1025.0;
+  double gravity = 9.81;
+  double KE = 0;
+  double PE = 0;
+  double reference = 0;
+  double height;
+  double altitude;
+  double PEheight;
+  double level;
+  double speed;
+  double area;
+
+  std::map<UIndex,Square>::iterator sit;
+  for (sit=_squares.begin(); sit!=_squares.end(); sit++) {
+    altitude = sit->second.lld().altitude(); //measured down from sea level
+    height = sit->second.height(); //height of water measured from floor, always positive
+    PEheight = height/2+altitude; //center of mass height measured from sea level down
+    speed = sqrt(pow(sit->second.velocity()[0],2)+pow(sit->second.velocity()[1],2));
+    area = sit->second.area();
+    if (altitude>0) {
+      altitude = 0;
+    }
+    PE = (density*area*(height)*gravity)*(PEheight)-(density*area*gravity*(-1)*altitude)*(altitude/2);
+    //std::cout<<height<<std::endl;
+    reference += (density*area*gravity*(-1)*altitude)*(altitude/2);
+    //if (height+altitude<0) {std::cout<<PE<<std::endl;}
+    KE = (0.5)*(density*area*height)*pow(speed,2);
+    totKE+=KE;
+    totPE+=PE;
+    tot+=KE+PE;
+  }
+  
+  std::cout<<std::setprecision(3)<<std::scientific;
+  if (verbose) {
+    std::cout<<"total energy-----------------------------------------------------------------------------------: "<<tot<<std::endl;
+    //std::cout<<"reference energy-----------------------------------------------------------------------------------: "<<reference<<std::endl;
+    std::cout<<"PE: "<<totPE<<std::endl;
+    std::cout<<"KE: "<<totKE<<std::endl;
+  }
+  
+  prevenergy = tot;
+  newPE = totPE;
+  newKE = totKE;
+  
+
+  return tot;
 }
 
 // Move the water from a Square given its current velocity and acceleration.
 // Partition the volume and momentum into the neighboring Squares.
-void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries) {
-
-    // Initialize the updated height and velocity to zero. These are the containers
-    // used to keep track of the distributed height/velocity from moving squares.
+void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries, const double accel_multiplier, const double friction_multiplier) {
+  
+  computeenergy(false);
+  beforemoveE = prevenergy;
+  
+  // Initialize the updated height and velocity to zero. These are the containers
+  // used to keep track of the distributed height/velocity from moving squares.
+  double volumebefore = 0;
+  double volumeafter = 0;
+  double velx = 0;
+  double vely = 0;
+  std::map<UIndex, Square>::iterator  sit2;
+  
+  for (sit2=_squares.begin(); sit2!=_squares.end(); ++sit2){
+    volumebefore+=sit2->second.height()*sit2->second.area();
+  }
+  computeenergy(false);
 
     #pragma omp parallel
     {
@@ -449,9 +757,9 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			lsit->second.set_updated_momentum(Vec<2>(0.0,0.0));
 			// Set acceleration based on the current slope of the water surface
 			if(absorbing_boundaries && lsit->second.blocks_from_edge()>1){
-				updateAcceleration(lsit->first, ldoPlaneFit);
+			  updateAcceleration(lsit->first, ldoPlaneFit, accel_multiplier, friction_multiplier);
 			}else{
-				updateAcceleration(lsit->first, ldoPlaneFit);
+			  updateAcceleration(lsit->first, ldoPlaneFit, accel_multiplier, friction_multiplier);
 			}
 
 
@@ -465,7 +773,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			current_pos = squareCenter(lsit->first);
 			current_velo = lsit->second.velocity();
 
-			if(laccel_bool && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.blocks_from_edge()>1))){
+			if(laccel_bool && (!absorbing_boundaries || (absorbing_boundaries && lsit->second.blocks_from_edge()>=15))){
 				current_accel = lsit->second.accel();
 			}else{
 				current_accel = Vec<2>(0,0);
@@ -477,13 +785,19 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 			new_velo = current_velo + current_accel*ldt;
 
 			//Catch velocities that run away due to bad local momentum conservation, etc.
-			if(new_velo.mag()>sqrt(fabs(G*max_depth()))){
-				new_velo = new_velo*sqrt(fabs(G*max_depth()))/new_velo.mag();
+			if(new_velo.mag()>sqrt(fabs(accel_multiplier*G*max_depth()))){
+				new_velo = new_velo*sqrt(fabs(accel_multiplier*G*max_depth()))/new_velo.mag();
 			}
 
 
 			average_velo = current_velo + current_accel*0.5*ldt;
 			distance_traveled = average_velo.mag()*ldt;
+			if(distance_traveled>1.5*sqrt(lsit->second.area())){
+			  distance_traveled = 1.5*sqrt(lsit->second.area());
+			  average_velo = average_velo*(distance_traveled/ldt)/(average_velo.mag());
+			}
+						
+
 
 			//If the square didn't move, or has run out of water, immediately distribute it's water back to itself
 			//  (along with any contributions from other squares)
@@ -538,11 +852,11 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 				std::map<UIndex, double>::iterator frac_it;
 				std::map<UIndex, double> x_fracmap, y_fracmap;
 
-
-				/*// Make Ring from new vertices for accurate overlap calc
+				
+				/* // Make Ring from new vertices for accurate overlap calc
 				point_spheq ring_verts[5] = {new_bottom_left, new_top_left, new_top_right, new_bottom_right, new_bottom_left};
 				ring_spheq new_ring;
-				bg::assign_points(new_ring, ring_verts);*/
+				bg::assign_points(new_ring, ring_verts); */
 
 				// Iterate through the neighbors and compute overlap area between ring and neighbor boxes
 				bool is_any_overlap = false;
@@ -596,8 +910,9 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
 				// If no overlap, we'll just distribute water to nearest square
 				if(!is_any_overlap){
-					originalFractions.insert(std::make_pair(distsNneighbors.begin()->second, 1.0));
-					fraction_sum = 1.0;
+				  //originalFractions.insert(std::make_pair(distsNneighbors.begin()->second, 1.0));
+				  originalFractions.insert(std::make_pair(i, 1.0));
+				  fraction_sum = 1.0;
 				}
 
 				// Then normalize these fractions to enforce conservation.
@@ -606,27 +921,128 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 					//assertThrow((frac_it->second)/fraction_sum <= 1, "Area fraction must be less than 1.");
 					renormFractions.insert(std::make_pair(frac_it->first, (frac_it->second)/fraction_sum));
 				}
-
+				
 				// Compute height and momentum imparted to neighbors
+				double areaa = 0;
+				double countt = 0;
+				for (frac_it=renormFractions.begin(); frac_it!=renormFractions.end(); ++frac_it) {
+				  countt++;
+				  double areaFraction = frac_it->second;
+				  areaa += areaFraction;
+				}
+
+				double newaddition = (1.0-areaa)/countt;
+				double newareaa = 0;
+				double heightdiff, xvel, yvel, xpos, ypos, totalvel;
+				
 				for (frac_it=renormFractions.begin(); frac_it!=renormFractions.end(); ++frac_it) {
 					// This iterator will give us the neighbor square
 					std::map<UIndex, Square>::iterator neighbor_it = _squares.find(frac_it->first);
 					//// This iterates through the renormalized fractions
-					//frac_it = renormFractions.find(nit->second);
 					double areaFraction = frac_it->second;
+					areaFraction+=newaddition;
+					newareaa+=areaFraction;
 
-					// Update the amount of water in the neighboring square (conserve volume)
-					double dV = lsit->second.volume()*areaFraction;
-					double H = local_updated_heights[neighbor_it->first];//neighbor_it->second.updated_height();
-					double A_n = neighbor_it->second.area();
+					//takes care of water jumping up on top of dry squares
+					if((lsit->second.height()+lsit->second.xyz()[2])<neighbor_it->second.xyz()[2]){
+					  //std::cout<<neighbor_it->first<<std::endl;
+					  heightdiff = neighbor_it->second.xyz()[2]-(lsit->second.height()+lsit->second.xyz()[2]);
+					  xpos = neighbor_it->second.xyz()[0]-lsit->second.xyz()[0];
+				   	  ypos = neighbor_it->second.xyz()[1]-lsit->second.xyz()[1];
+					  xvel = lsit->second.velocity()[0];
+					  yvel = lsit->second.velocity()[1];
+					  if(xpos==0){
+					    xvel = 0;
+					  }
+					  if(ypos==0){
+					    yvel = 0;
+					  }
+					  totalvel = sqrt(pow(xvel,2)+pow(yvel,2));
+					  if(totalvel<sqrt(2*G*heightdiff)){
+					    
+					    double dV = lsit->second.volume()*areaFraction;
+					    double H = local_updated_heights[lsit->first];
+					    double A_n = lsit->second.area();   
 
-					local_updated_heights[neighbor_it->first] = H + dV/A_n;
+					    local_updated_heights[lsit->first] = H + dV/A_n;
+					    
+					    Vec<2> dM = Vec<2>(-1*xvel,-1*yvel)*lsit->second.mass()*areaFraction;	
+					    Vec<2> M  = local_updated_momenta[lsit->first];
 
-					// Conserve momentum, update the velocity accordingly (at the end)
-					Vec<2> dM = new_velo*lsit->second.mass()*areaFraction;
-					Vec<2> M  = local_updated_momenta[neighbor_it->first];
+					    local_updated_momenta[lsit->first] = M + dM;
 
-					local_updated_momenta[neighbor_it->first] = M + dM;
+					  }
+					  else{
+					    double dV = lsit->second.volume()*areaFraction;
+					    double H = local_updated_heights[neighbor_it->first];
+					    double A_n = neighbor_it->second.area();
+
+					    local_updated_heights[neighbor_it->first] = H + dV/A_n;
+
+					    Vec<2> dM = Vec<2>(0.0,0.0);
+					    
+					    if(xvel==0){
+					      if(yvel>0){
+						Vec<2> dM = Vec<2>(lsit->second.velocity()[0],yvel-sqrt(2*G*heightdiff))*lsit->second.mass()*areaFraction;	
+					      }
+					      if(yvel<0){
+						Vec<2> dM = Vec<2>(lsit->second.velocity()[0],yvel+sqrt(2*G*heightdiff))*lsit->second.mass()*areaFraction;	
+					      }
+
+					    }
+					    else if(yvel==0){
+					      if(xvel>0){
+						Vec<2> dM = Vec<2>(xvel-sqrt(2*G*heightdiff),lsit->second.velocity()[1])*lsit->second.mass()*areaFraction;	
+					      }
+					      if(xvel<0){
+						Vec<2> dM = Vec<2>(xvel+sqrt(2*G*heightdiff),lsit->second.velocity()[1])*lsit->second.mass()*areaFraction;	
+					      }
+					    }
+					    else{
+					      Vec<2> dM = Vec<2>(xvel*(lsit->second.velocity().mag()-sqrt(2*G*heightdiff))/(lsit->second.velocity().mag()),yvel*(lsit->second.velocity().mag()-sqrt(2*G*heightdiff))/(lsit->second.velocity().mag()))*lsit->second.mass()*areaFraction;
+					    }
+					    
+					    Vec<2> M  = local_updated_momenta[neighbor_it->first];
+					    
+					    local_updated_momenta[neighbor_it->first] = M + dM;
+					  }
+					  
+					}
+					else{
+					  // Update the amount of water in the neighboring square (conserve volume)
+					  double dV = lsit->second.volume()*areaFraction;
+					  double H = local_updated_heights[neighbor_it->first];
+					  double A_n = neighbor_it->second.area();
+
+					  local_updated_heights[neighbor_it->first] = H + dV/A_n;
+
+					  // Conserve momentum, update the velocity accordingly (at the end)
+					  Vec<2> dM = new_velo*lsit->second.mass()*areaFraction;
+					  Vec<2> M  = local_updated_momenta[neighbor_it->first];
+					  /*
+					  //sending momentum backwards
+					  if(lsit->second.left()==neighbor_it->first){
+					    local_updated_momenta[lsit->second.right()] += dM; 
+					  }
+					  if(lsit->second.right()==neighbor_it->first){
+					    local_updated_momenta[lsit->second.left()] += dM; 
+					  }
+					  if(lsit->first==neighbor_it->first){
+					    local_updated_momenta[neighbor_it->first] = M + dM; 
+					  }
+					  
+					  //keeping momentum in place
+					  if(lsit->first==neighbor_it->first){
+					    local_updated_momenta[neighbor_it->first] += new_velo*lsit->second.mass(); 
+					  }
+					  if(neighbor_it->second.height()<10){
+					    local_updated_momenta[neighbor_it->first] += dM;
+					    local_updated_momenta[lsit->first] -= dM;
+					  }
+					  */
+					  local_updated_momenta[neighbor_it->first] = M + dM; //momentum distributed according to overlaps
+					}
+		   	
 
 				} //end loop setting updated heights and momenta from this square
 	        }//end else statement for moving squares or not
@@ -652,7 +1068,7 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
         sit->second.set_height(sit->second.updated_height());
 
         // Do Ward's height damping at edges (does NOT conserve volume)
-        if(absorbing_boundaries && sit->second.blocks_from_edge()!=0){
+        if(absorbing_boundaries && sit->second.blocks_from_edge()<15){
 
 			double damped_height = fmax(sit->second.height()-squareLevel(sit->first)*sit->second.damping_factor(), 0);
 
@@ -669,11 +1085,40 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
 
         // Don't set any velcity or height to tiny amounts of water
         if(sit->second.height() > SMALL_HEIGHT){
-        	sit->second.set_velocity( veltoset );
+	  double cutoff = 10000000000000;
+	  if(veltoset[0]>cutoff || veltoset[0]<-1*cutoff) {
+	    if(veltoset[0]>0) {
+	      velx = cutoff;
+	    }
+	    else {
+	      velx = -1*cutoff;
+	    }
+	  }
+	  else {
+	    velx = veltoset[0];
+	  }
+	  if(veltoset[1]>cutoff || veltoset[1]<-1*cutoff) {
+	    if(veltoset[1]>0) {
+	      vely = cutoff;
+	    }
+	    else {
+	      vely = -1*cutoff;
+	    }
+	  }
+	  else {
+	    vely = veltoset[1];
+	  }
+	  sit->second.set_velocity( Vec<2>(velx,vely) );
         }else{
             sit->second.set_velocity( Vec<2>(0.0, 0.0));
             sit->second.set_height(0);
         }
+
+	//killing velocities of water on land that have very small amounts of water
+	if (sit->second.xyz()[2]>0 && sit->second.height()<0.01) {
+	  sit->second.set_velocity( Vec<2>(0.0, 0.0));
+	  //sit->second.set_height(0);
+	}
 
         // Kill velocity on edge squares
         if(absorbing_boundaries && sit->second.blocks_from_edge()==0){
@@ -681,19 +1126,25 @@ void tsunamisquares::World::moveSquares(const double dt, const bool accel_bool, 
         }
 
     }
+    for (sit2=_squares.begin(); sit2!=_squares.end(); ++sit2) {
+      volumeafter+=sit2->second.height()*sit2->second.area();
+    }
+
+    std::cout << std::setprecision(0) << std::fixed;
+    //std::cout<<"before moving: "<<volumebefore<<" after moving: "<<volumeafter<<" difference: "<<volumeafter-volumebefore<<std::endl;
+    
     
 }
 
-void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bool doPlaneFit) {
+void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bool doPlaneFit, const double accel_multiplier, const double friction_multiplier) {
     std::map<UIndex, Square>::iterator square_it = _squares.find(square_id);
-    Vec<2> grav_accel, friction_accel, new_accel, gradient;
-    
+    Vec<2> grav_accel, friction_accel, new_accel, gradient, gradient2;
+
     // Only accelerate the water in this square IF there is water in this square
     if (square_it->second.height() > SMALL_HEIGHT) {
         // gravitational acceleration due to the slope of the water surface
         gradient = getGradient(square_id, doPlaneFit);
-        
-        grav_accel = gradient*G*(-1.0);
+        grav_accel = gradient* accel_multiplier*G*(-1.0);
 
         // Hard cutoff limit to 1 G of accel
         if(isnan(grav_accel[0]) || isinf(grav_accel[0])){
@@ -703,8 +1154,8 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bo
         	grav_accel[1] = 0.0;
         }
         if(grav_accel.mag() > G) {
-			grav_accel *= (G/(long double)grav_accel.mag());
-		}
+	  grav_accel *= (G/(long double)grav_accel.mag());  //add back in
+	}
         /*// limit to 0.5g, as per Ward
         //  with this process, acceleration is maximized for a slope of 1.  Extreme slopes won't move super fast,
         //  they'll tend to sit in one place while several smoothing iterations take their effect.
@@ -716,7 +1167,12 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bo
         grav_accel[1] = G*sin(ang)*cos(ang);*/
 
         // frictional acceleration from fluid particle interaction
-        friction_accel = square_it->second.velocity()*(-1.0)*square_it->second.velocity().mag()*(square_it->second.friction())/(fmax(square_it->second.height(), 1.0));
+	if (square_it->second.xyz()[2]>0) {
+	  friction_accel = (square_it->second.velocity()*(-1.0)*square_it->second.velocity().mag()*(square_it->second.friction())/(fmax(square_it->second.height(), 1.0)))*(friction_multiplier);
+	}
+	else {
+	  //friction_accel = square_it->second.velocity()*friction_multiplier*fabs(squareLevel(square_it->first))/square_it->second.velocity().mag();
+	}
         //friction_accel = Vec<2>(0.0,0.0);
 
         if(isnan(friction_accel[0]) || isinf(friction_accel[0])){
@@ -733,11 +1189,12 @@ void tsunamisquares::World::updateAcceleration(const UIndex &square_id, const bo
         if(square_it->second.invalid_directions()[1] && new_accel[0]>0.0) new_accel[0] = 0.0;
         if(square_it->second.invalid_directions()[2] && new_accel[1]<0.0) new_accel[1] = 0.0;
         if(square_it->second.invalid_directions()[3] && new_accel[1]>0.0) new_accel[1] = 0.0;
-
+	
         // Set the acceleration
         square_it->second.set_accel(new_accel);
+	//if(new_accel[0]!=0 && new_accel[1]!=0) {std::cout<<grav_accel<<" "<<friction_accel<<std::endl;}
     } else {
-        square_it->second.set_accel( Vec<2>(0.0, 0.0) );
+      square_it->second.set_accel( Vec<2>(0.0, 0.0) );
     }
 }
 
@@ -764,8 +1221,14 @@ tsunamisquares::Vec<2> tsunamisquares::World::getGradient(const UIndex &square_i
 tsunamisquares::SquareIDSet tsunamisquares::World::get_neighbors_for_accel(const UIndex &square_id) const {
     SquareIDSet                 	      valid_squares, all_neighbors_and_self;
     SquareIDSet::const_iterator       	                                  id_it;
-    bool									             condition1, condition2;
-
+    SquareIDSet::const_iterator       	                                  id_it2;
+    bool				        condition1, condition2, condition3;
+    Vec<2> vel;
+    Vec<2> pos;
+    double intercept;
+    double slope;
+    int k=0;
+    
     // Grab all valid neighbors
     all_neighbors_and_self = const_square(square_id).get_neighbors_and_self();
 
@@ -773,17 +1236,81 @@ tsunamisquares::SquareIDSet tsunamisquares::World::get_neighbors_for_accel(const
     // A wave incident on the beach is not pushed backwards by the tall beach in front of it.
     // The wave only falls back into the ocean after it has water below it that
     // defines a slope for the water surface.
-    
-    for (id_it=all_neighbors_and_self.begin(); id_it!=all_neighbors_and_self.end(); ++id_it) {
-		// If dry and taller than this square, do not include.  If dry and lower, do include
-		//        e.g. Are they dry, what's their level, height, etc.
 
-    	condition1 = const_square(*id_it).height() >= 0;
-    	condition2 = const_square(*id_it).xyz()[2] < squareLevel(square_id);
-		if(condition2 && condition1){
-			valid_squares.insert(*id_it);
-		}
+    //calculates the acceleration only from the front squares in the direction of the velocity
+    std::map<UIndex, Square>::const_iterator square_it = _squares.find(square_id);
+    vel = square_it->second.velocity();
+    pos = square_it->second.xy();
+    if(fabs(vel[0])>fabs(vel[1])){
+      slope = vel[1]/vel[0];
+      intercept = pos[0]-slope*pos[1];
     }
+    else{
+      slope = vel[0]/vel[1];
+      intercept = pos[1]-slope*pos[0];
+    }
+
+    for (id_it=all_neighbors_and_self.begin(); id_it!=all_neighbors_and_self.end(); ++id_it) {
+      // If dry and taller than this square, do not include.  If dry and lower, do include
+      //        e.g. Are they dry, what's their level, height, etc.
+
+      /*
+      //if statements to determine which squares fall on the side of the y=mx+b line in the direction of travel
+      if(fabs(vel[0])>fabs(vel[1])){
+	if(vel[0]>0){
+	  condition3 = const_square(*id_it).xy()[0] >= slope*const_square(*id_it).xy()[1]+intercept-dlon()/4;
+	}
+	else{
+	  condition3 = const_square(*id_it).xy()[0] <= slope*const_square(*id_it).xy()[1]+intercept+dlon()/4;
+	}
+      }
+      else if(fabs(vel[0])<=fabs(vel[1])){
+	//std::cout<<vel[0]<<" "<<vel[1]<<std::endl;
+	if(vel[1]>0){
+	  condition3 = const_square(*id_it).xy()[1] >= slope*const_square(*id_it).xy()[0]+intercept-dlon()/4;
+	}
+	else{
+	  condition3 = const_square(*id_it).xy()[1] <= slope*const_square(*id_it).xy()[0]+intercept+dlon()/4;
+	}
+      }
+      if(vel[0]==0 && vel[1]==0){
+	condition3 = true;
+      }
+      */
+      /*
+      //selects squares that are in direction of travel only in left right up and down directions for use in ward's smoothing method
+      if(vel[0]>0 && square_it->second.right()==*id_it){
+	condition3 = true;
+      }
+      if(vel[0]<0 && square_it->second.left()==*id_it){
+	condition3 = true;
+      }
+      if(vel[1]>0 && square_it->second.top()==*id_it){
+	condition3 = true;
+      }
+      if(vel[1]>0 && square_it->second.bottom()==*id_it){
+	condition3 = true;
+      }
+      if(vel[0]==0 && vel[1]==0){
+	condition3 = true;
+      }
+      if(square_it->first==*id_it){
+	condition3 = true;
+      }
+      */
+      //combining all other conditions to determine if we should use this square
+      condition1 = const_square(*id_it).height() >= 0;
+      condition2 = const_square(*id_it).xyz()[2] < squareLevel(square_id);
+      if(condition2 && condition1){
+	valid_squares.insert(*id_it);
+      }
+    }
+    for(id_it2=valid_squares.begin(); id_it2!=valid_squares.end(); id_it2++){
+      k++;
+    }
+    if(k>0){
+      //std::cout<<k<<std::endl;
+  }
     
     return valid_squares;
 }
@@ -811,7 +1338,8 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
     Vec<9>                          A;
     Vec<3>                          b, x;
     
-	neighborsAndCoords = square(this_id).local_neighbor_coords();
+    neighborsAndCoords = square(this_id).local_neighbor_coords();
+
 
 	// loop over the provided valid neighbor ids, get their relative positions from neighborsAndCoords
     for (id_it=square_ids.begin(); id_it!=square_ids.end(); ++id_it) {
@@ -826,7 +1354,7 @@ tsunamisquares::Vec<2> tsunamisquares::World::fitPointsToPlane(const UIndex &thi
     // Build the b vector and the A matrix.
     // Single index for matrix, array style. A[i][j] = A_vec[i*3 + j],  N_cols=3
     for (i=0; i<N; ++i) {
-            
+  
         b[0] += (x_vals[i]-xav)*(z_vals[i]-zav);
         b[1] += (y_vals[i]-yav)*(z_vals[i]-zav);
         b[2] += (z_vals[i]-zav);
@@ -925,49 +1453,262 @@ tsunamisquares::Vec<2> tsunamisquares::World::getAverageSlopeWard(const UIndex &
     std::map<UIndex, Square>::const_iterator square_it = _squares.find(square_id);
     SquareIDSet::const_iterator     id_it;
     std::map<UIndex, Vec<2> > neighborsAndCoords;
-    Vec<2> gradient;
+    Vec<2> gradient, vel;
     bool debug = false;
     
-	neighborsAndCoords = square_it->second.local_neighbor_coords();
+    neighborsAndCoords = square_it->second.local_neighbor_coords();
 
+    double a, fixedc, tt, cc, extra;
     int num_horiz  = 0;
     int num_vert   = 0;
     gradient[0]    = 0;
     gradient[1]    = 0;
-    for (id_it=square_ids.begin(); id_it!=square_ids.end(); ++id_it) {
+    vel = square_it->second.velocity();
+    double l, r, t, b;
+    double vert_dist, top_horiz_dist, bottom_horiz_dist, horiz_dist;
+    Vec<2> center;
+    bool ryou, lyou, tyou, byou;
 
+    //amount to add to the C constant to determine the acceleration based on the linear combination of slopes
+    //measured charcteristic value of factor/(tratio*add)=0.10101
+    double add = 0.495;
+    fixedc = 1.3805; //1D
+    fixedc = 1.485;
+    fixedc = 1.4;
+    cc = 0.2;
+    extra = 0.8;
+
+    //first check to see which neighbors are being looped over
+    ryou = false;
+    lyou = false;
+    tyou = false;
+    byou = false;
+    for (id_it=square_ids.begin(); id_it!=square_ids.end(); ++id_it) {
+      if(*id_it==square_it->second.left()){
+	lyou = true;
+      }
+      if(*id_it==square_it->second.right()){
+	ryou = true;
+      }
+      if(*id_it==square_it->second.top()){
+	tyou = true;
+      }
+      if(*id_it==square_it->second.bottom()){
+	byou = true;
+      }
+    }
+
+    for (id_it=square_ids.begin(); id_it!=square_ids.end(); ++id_it) {
+      
 		if(*id_it==square_it->second.left()){
-			gradient[0] += (squareLevel(square_it->first)-squareLevel(*id_it))/(-1*neighborsAndCoords[*id_it][0]);
+		        gradient[0] += (squareLevel(square_it->first)-squareLevel(*id_it))/fabs(neighborsAndCoords[*id_it][0]);
+			l = (squareLevel(square_it->first)-squareLevel(*id_it))/fabs(neighborsAndCoords[*id_it][0]);			
 			num_horiz++;
 			continue;
 		}
 		if(*id_it==square_it->second.right()){
-			gradient[0] += (squareLevel(*id_it)-squareLevel(square_it->first))/neighborsAndCoords[*id_it][0];
+		        gradient[0] += (squareLevel(*id_it)-squareLevel(square_it->first))/fabs(neighborsAndCoords[*id_it][0]);
+			r = (squareLevel(*id_it)-squareLevel(square_it->first))/fabs(neighborsAndCoords[*id_it][0]);
 			num_horiz++;
 			continue;
 		}
 		if(*id_it==square_it->second.bottom()){
-			gradient[1] += (squareLevel(square_it->first)-squareLevel(*id_it))/(-1*neighborsAndCoords[*id_it][1]);
+		        gradient[1] += (squareLevel(square_it->first)-squareLevel(*id_it))/fabs(neighborsAndCoords[*id_it][1]);
+			b = (squareLevel(square_it->first)-squareLevel(*id_it))/fabs(neighborsAndCoords[*id_it][1]);
 			num_vert++;
 			continue;
 		}
 		if(*id_it==square_it->second.top()){
-			gradient[1] += (squareLevel(*id_it)-squareLevel(square_it->first))/neighborsAndCoords[*id_it][1];
+		        gradient[1] += (squareLevel(*id_it)-squareLevel(square_it->first))/fabs(neighborsAndCoords[*id_it][1]);
+			t = (squareLevel(*id_it)-squareLevel(square_it->first))/fabs(neighborsAndCoords[*id_it][1]);
 			num_vert++;
 			continue;
 		}
     }
+    
+    //check for squares that cross from negative V to positive V and use the following rules for adjusting their acceleration (this solves many problems at the barrier)
+    //horizontal
+    if(lyou && ryou){
+      //situations 3 and 4 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      if(_squares.find(square_it->second.left())->second.velocity()[0]<0 && square_it->second.velocity()[0]>0){ //positive V slope on right ==
+	if(squareLevel(square_it->first)>squareLevel(square_it->second.left())){ //positive H slope on right ==
+	  gradient[0] = gradient[0]; //(sitution 3 on right)~
+	  l = gradient[0]/2;
+	  r = gradient[0]/2;
+	}
+	else{ //negative H slope on right 
+	  gradient[0] = gradient[0]*1.2; //(situation 4 on right)~
+	  l = gradient[0]*1.2/2;
+	  r = gradient[0]*1.2/2;
+	}
+      }
+      if(_squares.find(square_it->second.right())->second.velocity()[0]>0 && square_it->second.velocity()[0]<0){ //positive V slope on left ==
+	if(squareLevel(square_it->second.right())>squareLevel(square_it->first)){ //positive H slope on left /=
+	  gradient[0] = gradient[0]*1.2; //(sitution 3 on left)~
+	  l = gradient[0]*1.2/2;
+	  r = gradient[0]*1.2/2;
+	}
+	else{ //negative H slope on left
+	  gradient[0] = gradient[0]; //(sitution 4 on left)~
+	  l = gradient[0]/2;
+	  r = gradient[0]/2;
+	}
+      }
 
-	if(num_horiz == 0){
-		gradient[0] = 0.0;
-	} else{
-		gradient[0] = gradient[0]/num_horiz;
+      //situations 1 and 2 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      if(_squares.find(square_it->second.left())->second.velocity()[0]>0 && square_it->second.velocity()[0]<0){ //negative V slope on right
+	if(squareLevel(square_it->first)>squareLevel(square_it->second.left())){ //positive H slope on right
+	  gradient[0] = 0; //(situation 1 on right)~
+	  l = 0;
+	  r = 0;
 	}
-	if(num_vert == 0){
-		gradient[1] = 0.0;
-	} else{
-		gradient[1] = gradient[1]/num_vert;
+	else{ //negative H slope on right 
+	  //do nothing (situation 2 on right)~
 	}
+      }
+      if(_squares.find(square_it->second.right())->second.velocity()[0]<0 && square_it->second.velocity()[0]>0){ //negative V slope on left
+	if(squareLevel(square_it->second.right())>squareLevel(square_it->first)){ //positive H slope on left 
+	  //do nothing (situation 1 left)~
+	}
+	else{ //negative H slope on left
+	  gradient[0] = 0; //(situation 2 on left)~
+	  l = 0;
+	  r = 0;
+	}
+      }
+    }
+    //vertical
+    if(tyou && byou){
+      //situations 3 and 4 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      if(_squares.find(square_it->second.bottom())->second.velocity()[1]<0 && square_it->second.velocity()[1]>0){ //positive V slope on right
+	if(squareLevel(square_it->first)>squareLevel(square_it->second.bottom())){ //positive H slope on right
+	  gradient[1] = gradient[1]; //(sitution 3 on right)~
+	  b = gradient[1]/2;
+	  t = gradient[1]/2;
+	}
+	else{ //negative H slope on right 
+	  gradient[1] = gradient[1]*1.2; //(situation 4 on right)~
+	  b = gradient[1]*1.2/2;
+	  t = gradient[1]*1.2/2;
+	}
+      }
+      if(_squares.find(square_it->second.top())->second.velocity()[1]>0 && square_it->second.velocity()[1]<0){ //positive V slope on left
+	if(squareLevel(square_it->second.top())>squareLevel(square_it->first)){ //positive H slope on left /==
+	  gradient[1] = gradient[1]*1.2; //(sitution 3 on left)~
+	  b = gradient[1]*1.2/2;
+	  t = gradient[1]*1.2/2;
+	}
+	else{ //negative H slope on left
+	  gradient[1] = gradient[1]; //(sitution 4 on left)~
+	  b = gradient[1]/2;
+	  t = gradient[1]/2;
+	}
+      }
+
+      //situations 1 and 2 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      if(_squares.find(square_it->second.bottom())->second.velocity()[1]>0 && square_it->second.velocity()[1]<0){ //negative V slope on right
+	if(squareLevel(square_it->first)>squareLevel(square_it->second.bottom())){ //positive H slope on right
+	  gradient[1] = 0; //(situation 1 on right)~
+	  b = 0;
+	  t = 0;
+	}
+	else{ //negative H slope on right 
+	  //do nothing (situation 2 on right)~
+	}
+      }
+      if(_squares.find(square_it->second.top())->second.velocity()[1]<0 && square_it->second.velocity()[1]>0){ //negative V slope on left
+	if(squareLevel(square_it->second.top())>squareLevel(square_it->first)){ //positive H slope on left 
+	  //do nothing (situation 1 left)~
+	}
+	else{ //negative H slope on left
+	  gradient[1] = 0; //(situation 2 on left)~
+	  b = 0;
+	  t = 0;
+	}
+      }
+    }
+    
+    center = square_it->second.xy();
+    vert_dist   = bg::distance(point_spheq(center[0], center[1]-_dlat/2), point_spheq(center[0], center[1]+_dlat/2));
+    top_horiz_dist    = bg::distance(point_spheq(center[0]-_dlon/2, center[1]+_dlat/2), point_spheq(center[0]+_dlon/2, center[1]+_dlat/2));
+    bottom_horiz_dist = bg::distance(point_spheq(center[0]-_dlon/2, center[1]-_dlat/2), point_spheq(center[0]+_dlon/2, center[1]-_dlat/2));
+    horiz_dist = fabs(top_horiz_dist)/2+fabs(bottom_horiz_dist)/2;
+
+    tt = dtt*sqrt(square_it->second.height()*G)/(sqrt(square_it->second.area()*horiz_dist/vert_dist));
+    a = add + 1-dtt*sqrt(square_it->second.height()*G)/(sqrt(square_it->second.area()*horiz_dist/vert_dist));
+    a = 1+0.25*dtt*sqrt(square_it->second.height()*G)/(sqrt(square_it->second.area()*horiz_dist/vert_dist))+0.05;
+    a = 1+cc-tt*(cc-0.2)/0.8;
+    a = 1-tt+extra;
+    extra = fixedc-(1-tt);
+
+    if(squareLevel(square_it->first)>0){
+      a = 1-tt+extra;
+      if(num_horiz == 0){
+	gradient[0] = 0.0;
+      }
+      else if(num_horiz==2 && vel[0]>0){
+	gradient[0] = a*r+(1-a)*gradient[0]/2;
+      }
+      else if(num_horiz==2 && vel[0]<0){
+	gradient[0] = a*l+(1-a)*gradient[0]/2;
+      }
+      else{
+	gradient[0] = gradient[0]/num_horiz;
+      }
+    }
+    else{
+      a = 1+tt-extra;
+      if(num_horiz == 0){
+	gradient[0] = 0.0;
+      }
+      else if(num_horiz==2 && vel[0]>0){
+	gradient[0] = a*r+(1-a)*gradient[0]/2;
+      }
+      else if(num_horiz==2 && vel[0]<0){
+	gradient[0] = a*l+(1-a)*gradient[0]/2;
+      }
+      else{
+	gradient[0] = gradient[0]/num_horiz;
+      }
+    }
+    
+    tt = dtt*sqrt(square_it->second.height()*G)/(sqrt(square_it->second.area()*vert_dist/horiz_dist));
+    a = add + 1-dtt*sqrt(square_it->second.height()*G)/(sqrt(square_it->second.area()*vert_dist/horiz_dist));
+    a = 1+0.25*dtt*sqrt(square_it->second.height()*G)/(sqrt(square_it->second.area()*vert_dist/horiz_dist))+0.05;
+    a = 1+cc-tt*(cc-0.2)/0.8;
+    a = 1-tt+extra;
+    extra = fixedc-(1-tt);
+
+    if(squareLevel(square_it->first)>0){
+      a = 1-tt+extra;
+      if(num_vert == 0){
+	gradient[1] = 0.0;
+      }
+      else if(num_vert==2 && vel[1]>0){
+	gradient[1] = a*t+(1-a)*gradient[1]/2;
+      }
+      else if(num_vert==2 && vel[1]<0){
+	gradient[1] = a*b+(1-a)*gradient[1]/2;
+      }
+      else{
+	gradient[1] = gradient[1]/num_vert;
+      }
+    }
+    else{
+      a = 1+tt-extra;
+      if(num_vert == 0){
+	gradient[1] = 0.0;
+      }
+      else if(num_vert==2 && vel[1]>0){
+	gradient[1] = a*t+(1-a)*gradient[1]/2;
+      }
+      else if(num_vert==2 && vel[1]<0){
+	gradient[1] = a*b+(1-a)*gradient[1]/2;
+      }
+      else{
+	gradient[1] = gradient[1]/num_vert;
+      }
+    }
 
 	/*Kasey's old code.  Seems to be eqivalent, but I'm handling the different cases external to this function now
 	// Initialize the 4 points that will be used to approximate the slopes d/dx and d/dy
@@ -1055,17 +1796,17 @@ void tsunamisquares::World::deformBottom(const UIndex &square_id, const double &
 }
 
 tsunamisquares::Vec<2> tsunamisquares::World::centralLoc(void){
-	LatLonDepth min_bound, max_bound;
-	Vec<3> min_xyz, max_xyz;
-	double dx, dy;
-	get_bounds(min_bound, max_bound);
-
-    min_xyz = Vec<3>(min_bound.lon(), min_bound.lat(), min_bound.altitude());
-    max_xyz = Vec<3>(max_bound.lon(), max_bound.lat(), max_bound.altitude());
-    dx = max_xyz[0]-min_xyz[0];
-    dy = max_xyz[1]-min_xyz[1];
-
-	return Vec<2>(min_xyz[0]+dx/2.0, min_xyz[1]+dy/2.0);
+  LatLonDepth min_bound, max_bound;
+  Vec<3> min_xyz, max_xyz;
+  double dx, dy;
+  get_bounds(min_bound, max_bound);
+  
+  min_xyz = Vec<3>(min_bound.lon(), min_bound.lat(), min_bound.altitude());
+  max_xyz = Vec<3>(max_bound.lon(), max_bound.lat(), max_bound.altitude());
+  dx = max_xyz[0]-min_xyz[0];
+  dy = max_xyz[1]-min_xyz[1];
+  
+  return Vec<2>(min_xyz[0]+dx/2.0, min_xyz[1]+dy/2.0);
 }
 
 void tsunamisquares::World::bumpCenter(const double bump_height) {;
@@ -1104,16 +1845,58 @@ void tsunamisquares::World::flattenBottom(const double &depth) {
 }
 
 void tsunamisquares::World::gaussianPile(const double hgauss, const double std){
+  //called gauss
     std::map<UIndex, Square>::iterator sit;
     Vec<2> centerLoc = centralLoc();
-
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
-        double disc = hgauss * exp(-pow((tsunamisquares::boostDistance(centerLoc, sit->second.xy())/std), 2));
-        sit->second.set_height(-sit->second.xyz()[2] + disc);
+      double disc = hgauss * exp(-0.5*pow((tsunamisquares::boostDistance(centerLoc, sit->second.xy())/std), 2));
+      sit->second.set_height(-sit->second.xyz()[2] + disc);
     }
 }
 
+void tsunamisquares::World::gaussianStrip(const double hgauss, const double std){
+  //called gaussStrip
+    std::map<UIndex, Square>::iterator sit;
+    Vec<2> centerLoc;
+    int i=0;
+    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+      centerLoc = Vec<2>(centralLoc()[0],sit->second.xy()[1]);
+      double disc = hgauss * exp(-0.5*pow((tsunamisquares::boostDistance(centerLoc, sit->second.xy())/std), 2));
+      sit->second.set_height(-sit->second.xyz()[2] + disc);
+    }
+}
 
+void tsunamisquares::World::gaussianPosNeg(const double hgauss, const double std){
+  //called gaussPosNeg
+    std::map<UIndex, Square>::iterator sit;
+    Vec<2> centerLoc;
+    int i=0;
+    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+      centerLoc = Vec<2>(centralLoc()[0],sit->second.xy()[1]);
+      double disc = hgauss * exp(-0.5*pow((tsunamisquares::boostDistance(centerLoc, sit->second.xy())/std), 2));
+      double disc2 = -hgauss * exp(-0.5*pow(((tsunamisquares::boostDistance(Vec<2>(centralLoc()[0]+std/(tsunamisquares::boostDistance(Vec<2>(0,sit->second.xy()[1]),Vec<2>(1,sit->second.xy()[1]))),sit->second.xy()[1]), sit->second.xy()))/std), 2));
+      disc = hgauss * exp(-0.5*pow(((tsunamisquares::boostDistance(Vec<2>(centralLoc()[0]-std/(tsunamisquares::boostDistance(Vec<2>(0,sit->second.xy()[1]),Vec<2>(1,sit->second.xy()[1]))),sit->second.xy()[1]), sit->second.xy()))/std), 2));
+      sit->second.set_height(-sit->second.xyz()[2] + disc + disc2);
+    }
+}
+
+void tsunamisquares::World::soliton(const double hgauss){
+  //called soliton
+  double width = num_lons()*dlon();
+  double offset = width*0.25;
+  double d = -1*max_depth();
+  double k = (1/d)*(sqrt((3*hgauss)/(4*d)));
+  double hset;
+    std::map<UIndex, Square>::iterator sit;
+    Vec<2> centerLoc;
+    int i=0;
+    for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
+      centerLoc = Vec<2>(centralLoc()[0]+offset,sit->second.xy()[1]);
+      double disc = hgauss * 1/pow(cosh(k*tsunamisquares::boostDistance(centerLoc, sit->second.xy())),2);
+      sit->second.set_height(-sit->second.xyz()[2] + disc);
+      sit->second.set_velocity(Vec<2>(-disc*sqrt(G/d),0));
+    }
+}
 //
 //// ----------------------------------------------------------------------
 //// -------------------- Utility Functions -------------------------------
@@ -1155,6 +1938,8 @@ void tsunamisquares::World::assign2DIndeces() {
 		yind_from_edge = std::min(yind, from_top);
 		from_edge = std::min(xind_from_edge, yind_from_edge);
 
+		sit->second.set_blocks_from_edgex(xind_from_edge);
+		sit->second.set_blocks_from_edgey(yind_from_edge);
 		sit->second.set_blocks_from_edge(from_edge);
 
 		if(from_edge < 15){
@@ -1294,12 +2079,74 @@ tsunamisquares::UIndex tsunamisquares::World::whichSquare(const Vec<2> &location
     return square_dists.begin()->second;
 }
 
+//now to smooth the bathymetry topology
+//this gets rid of runaway wave errors when dealing with low resolution simulations
+//waves suddenly changing from a deep depth to a shallow depth will break
+void tsunamisquares::World::smoothBathymetry(void){
+
+  std::cout<<"smoothing bathymetry... "<<std::endl;
+  
+  int ndiff = 0;
+  double fact = 0.1;
+
+  std::map<UIndex, Square>::iterator  lsit;
+  std::map<UIndex, Square>::iterator  nit;
+  SquareIDSet                         neighborIDs;
+  SquareIDSet::iterator               id_it;
+  double                              height_change;
+  std::map<UIndex, long double> local_height_changes;
+  
+  for(int ll=0; ll<ndiff; ll++){
+    std::cout<<ll<<std::endl;
+
+    for (UIndex i = 0; i < _squares.size(); i++){
+      local_height_changes[i] = 0.0;
+    }
+    
+    for (UIndex i = 0; i < _squares.size(); i++){
+      lsit = _squares.find(i);
+      
+      if (lsit->second.blocks_from_edge()!=0) {
+	height_change = 0;
+
+	// Go through neighbors to check amount to be exchanged
+	neighborIDs = lsit->second.get_valid_nearest_neighbors();
+	for (id_it=neighborIDs.begin(); id_it!=neighborIDs.end(); ++id_it) {
+	  nit = _squares.find(*id_it);
+	  height_change = 0;
+
+	  if(*id_it==lsit->second.left() || *id_it==lsit->second.right()){
+	    height_change = fact*(nit->second.xyz()[2] - lsit->second.xyz()[2]);
+	  }
+	  if(*id_it==lsit->second.bottom() || *id_it==lsit->second.top()){
+	    height_change = fact*(nit->second.xyz()[2] - lsit->second.xyz()[2]);
+	  }
+
+	  if(lsit->second.xyz()[2]>=-1){ //only smooth underwater
+	    height_change = 0;
+	  }
+	      
+	  local_height_changes[nit->first] -= height_change; //neighbor
+	  local_height_changes[lsit->first] += height_change; //main
+	}
+      }
+    }
+    
+    // Here is where we combine all local updated heights and momenta into the global updated values
+    for (lsit=_squares.begin(); lsit!=_squares.end(); ++lsit) {
+      LatLonDepth new_lld = lsit->second.lld();
+      new_lld.set_altitude( new_lld.altitude() + local_height_changes[lsit->first]);
+      lsit->second.set_lld(new_lld);
+    }
+  } 
+}
 
 void tsunamisquares::World::indexNeighbors() {
 	// TODO: some of these could be combines instead of looping over all the squares multiple times
 	computeNeighbors();
 	computeNeighborCoords();
 	calcMaxOverlapError();
+	smoothBathymetry();
 }
 
 void tsunamisquares::World::computeNeighbors(void) {
@@ -1312,24 +2159,53 @@ void tsunamisquares::World::computeNeighbors(void) {
     // Use the in-place element numbering to find the IDs of the neighboring squares.
     // Must handle the border and corner cases and not include off-model neighbors.
 
+    //fix to include all possibilities for bathymetry input files. The program could read it on top left to bottom right or any other way
+    //this messes with the indexing and you cannot use one single + or - rule for finding the index of top bottom left or right squares
+    Vec<2> corner1, corner2;
+    int mx=1;
+    int my=1;
+
+    corner1 = _squares.begin()->second.xy();
+    corner2 = _squares.find(_squares.size()-1)->second.xy();
+
+    if(corner1[0]>corner2[0]){
+      mx=-1;
+    }
+    if(corner1[1]>corner2[1]){
+      my=-1;
+    }
+    std::cout<<mx<<" "<<my<<std::endl;
+
     for (sit=_squares.begin(); sit!=_squares.end(); ++sit) {
         this_id      = sit->first;
-        left         = this_id-1;
-        right        = this_id+1;
-        top          = this_id+num_lons();
-        bottom       = this_id-num_lons();
-        top_left     = top-1;
-        top_right    = top+1;
-        bottom_left  = bottom-1;
-        bottom_right = bottom+1;
+        left         = this_id-1*mx;
+        right        = this_id+1*mx;
+        top          = this_id+num_lons()*my;
+        bottom       = this_id-num_lons()*my;
+        top_left     = top-1*mx;
+        top_right    = top+1*mx;
+        bottom_left  = bottom-1*mx;
+        bottom_right = bottom+1*mx;
 
         int this_lon_index = this_id%num_lons();
         int this_lat_index = ((this_id-(this_id%num_lons()))/num_lons())%num_lats();
 
-        isMinLon      = (this_lon_index == 0);
-        isMaxLon      = (this_lon_index == num_lons()-1);
-        isMinLat      = (this_lat_index == 0);
-        isMaxLat      = (this_lat_index == num_lats()-1);
+	if(mx==1){
+	  isMinLon      = (this_lon_index == 0);
+	  isMaxLon      = (this_lon_index == num_lons()-1);
+	}
+	else{
+	  isMaxLon      = (this_lon_index == 0);
+	  isMinLon      = (this_lon_index == num_lons()-1);
+	}
+	if(my==1){
+	  isMinLat      = (this_lat_index == 0);
+	  isMaxLat      = (this_lat_index == num_lats()-1);
+	}
+	else{
+	  isMaxLat      = (this_lat_index == 0);
+	  isMinLat      = (this_lat_index == num_lats()-1);
+	}
 
         // Handle the corner and edge cases
         if (!(isMaxLat || isMaxLon || isMinLon || isMinLat)) {
@@ -1733,27 +2609,42 @@ void tsunamisquares::World::append_netCDF_file(const std::string &file_name, con
 	NcVar altVar = dataFile.getVar("altitude");
 	NcVar velHorVar = dataFile.getVar("horizontal velocity");
 	NcVar velVertVar = dataFile.getVar("vertical velocity");
-
 	float time_out[1];
-	float level_out[NLAT][NLON];
-	float height_out[NLAT][NLON];
-	float alt_out[NLAT][NLON];
-	float velHor_out[NLAT][NLON];
-	float velVert_out[NLAT][NLON];
+	/*
+	float **level_out = (float**)malloc(sizeof(float*)*NLAT);
+	float **height_out = (float**)malloc(sizeof(float*)*NLAT);
+	float **alt_out = (float**)malloc(sizeof(float*)*NLAT);
+	float **velHor_out = (float**)malloc(sizeof(float*)*NLAT);
+	float **velVert_out = (float**)malloc(sizeof(float*)*NLAT);
+	for(int ll=0; ll<NLAT; ll++){
+	  level_out[ll] = (float*)malloc(sizeof(float)*NLON);
+	  height_out[ll] = (float*)malloc(sizeof(float)*NLON);
+	  alt_out[ll] = (float*)malloc(sizeof(float)*NLON);
+	  velHor_out[ll] = (float*)malloc(sizeof(float)*NLON);
+	  velVert_out[ll] = (float*)malloc(sizeof(float)*NLON);
+	}
+	
+	float level_out2[NLAT][NLON];
+	//float height_out2[NLAT][NLON];
+	//float alt_out2[NLAT][NLON];
+	//float velHor_out2[NLAT][NLON];
+	//float velVert_out2[NLAT][NLON];
+	
+	
 
 	// Populate the data arrays from world data
 	time_out[0] = this_time;
 	for(sit=_squares.begin(); sit!=_squares.end(); sit++){
 		int lat_index = std::floor(sit->first / double(NLON));
 		int lon_index = sit->first % NLON;
-
 		level_out[lat_index][lon_index] = squareLevel(sit->first);
+		level_out2[lat_index][lon_index] = squareLevel(sit->first);
 		height_out[lat_index][lon_index] = sit->second.height();
 		alt_out[lat_index][lon_index] = sit->second.xyz()[2];
 		velHor_out[lat_index][lon_index] = sit->second.velocity()[0];
 		velVert_out[lat_index][lon_index] = sit->second.velocity()[1];
 	}
-
+	*/
 
 	std::vector<size_t> startp, countp, starttime, counttime;
 
@@ -1771,12 +2662,29 @@ void tsunamisquares::World::append_netCDF_file(const std::string &file_name, con
 	countp.push_back(NLAT);
 	countp.push_back(NLON);
 
+	time_out[0] = this_time;
 	timeVar.putVar(starttime,counttime,time_out);
+	/*
 	levelVar.putVar(startp,countp,level_out);
 	heightVar.putVar(startp,countp,height_out);
 	altVar.putVar(startp,countp,alt_out);
 	velHorVar.putVar(startp,countp,velHor_out);
 	velVertVar.putVar(startp,countp,velVert_out);
+	*/
+	for(sit=_squares.begin(); sit!=_squares.end(); sit++){
+		int lat_index = std::floor(sit->first / double(NLON));
+		int lon_index = sit->first % NLON;
+		std::vector<size_t> v;
+		v.push_back(current_step);
+		v.push_back(lat_index);
+		v.push_back(lon_index);
+		
+		levelVar.putVar(v,squareLevel(sit->first));
+		heightVar.putVar(v,sit->second.height());
+		altVar.putVar(v,sit->second.xyz()[2]);
+		velHorVar.putVar(v,sit->second.velocity()[0]);
+		velVertVar.putVar(v,sit->second.velocity()[1]);
+	}
 }
 
 void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name, const float &this_time){
@@ -1892,9 +2800,9 @@ void tsunamisquares::World::write_sim_state_netCDF(const std::string &file_name,
 
 
 void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name){
-	// Read in NetCDF
+	//Read in NetCDF
 	NcFile dataFile(file_name, NcFile::read);
-
+	
 	long NTIME = dataFile.getDim("time").getSize();
 	long NLAT = dataFile.getDim("latitude").getSize();
 	long NLON = dataFile.getDim("longitude").getSize();
@@ -1962,7 +2870,12 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name){
 		lat_algarr[j] = lats_in[j];
 		for(int i=0; i<NLON; i++){
 			lon_algarr[i] = lons_in[i];
-			level_algarr[j*NLON+i]  = level_in[j][i];
+			if(alt_in[j][i]>0){
+			  level_algarr[j*NLON+i]  = 0;
+			}
+			else{
+			  level_algarr[j*NLON+i]  = level_in[j][i];
+			}
 			height_algarr[j*NLON+i]  = height_in[j][i];
 			alt_algarr[j*NLON+i]     = alt_in[j][i];
 			velHor_algarr[j*NLON+i]  = velocity_horiz_in[j][i];
@@ -2002,27 +2915,54 @@ void tsunamisquares::World::read_sim_state_netCDF(const std::string &file_name){
 		std::map<UIndex, Square>::iterator sit = _squares.find(*sidit);
 		float square_lon = sit->second.xy()[0];
 		float square_lat = sit->second.xy()[1];
-
+		
 		// Set square altitude
-		LatLonDepth new_lld = sit->second.lld();
-		new_lld.set_altitude( spline2dcalc(alt_spline, square_lon, square_lat) );
-		sit->second.set_lld(new_lld);
-
+		//LatLonDepth new_lld = sit->second.lld();
+		//new_lld.set_altitude( spline2dcalc(alt_spline, square_lon, square_lat) );
+		//sit->second.set_lld(new_lld);
+		
 		// Most important thing for hazard estimate is level of water, not how deep the column is.  So get appropriate height from level.
 		float heighttoset = spline2dcalc(level_spline, square_lon, square_lat) - spline2dcalc(alt_spline, square_lon, square_lat);
+		heighttoset = spline2dcalc(level_spline, square_lon, square_lat) - sit->second.xyz()[2];
 
-		// If the amount of water is tiny, best to not give the square any at all.  This avoids artifically wetting dry land with miniscule amounts.
-		//  Only seafloor below a certain depth will recieve any water, so don't try to pick up a simulation that has already inundated land.
-		if(heighttoset > 1e-2 && sit->second.xyz()[2] < -1e2){
-			sit->second.set_height( heighttoset );
-			sit->second.set_velocity( Vec<2>( spline2dcalc(velHor_spline, square_lon, square_lat), spline2dcalc(velVert_spline, square_lon, square_lat) ) );
+		int chosenj = 0;
+		int choseni = 0;
+		double diff = 999;
+		double scaledup = 1;
+		  
+		for(int j=0; j<NLAT; j++){
+		  if(lats_in[j]<square_lat){
+		    chosenj = j;
+		    break;
+		  }
+		}
+		for(int i=0; i<NLON; i++){
+		  if(lons_in[i]>square_lon){
+		    choseni = i;
+		    break;
+		  }
 		}
 
+		//std::cout<<chosenj<<" "<<choseni<<std::endl;
+		
+		//heighttoset = level_in[chosenj][choseni]*scaledup - sit->second.xyz()[2];
+		
+		// If the amount of water is tiny, best to not give the square any at all.  This avoids artifically wetting dry land with miniscule amounts.
+		//  Only seafloor below a certain depth will recieve any water, so don't try to pick up a simulation that has already inundated land.
+		
+		if(heighttoset > 0.01 && spline2dcalc(alt_spline, square_lon, square_lat) < -100 && sit->second.xyz()[2] < -100){//if(heighttoset > 1e-2 && sit->second.xyz()[2] < -1e2){
+		  //sit->second.set_height( heighttoset );
+		  //sit->second.set_velocity( Vec<2>( spline2dcalc(velHor_spline, square_lon, square_lat), spline2dcalc(velVert_spline, square_lon, square_lat) ) );
+		}
+		if(heighttoset > 0.01 && alt_in[chosenj][choseni] < -0 && sit->second.xyz()[2] < -0 ){
+			sit->second.set_height( heighttoset );
+			//sit->second.set_velocity( Vec<2>(velocity_horiz_in[chosenj][choseni]*scaledup, velocity_vert_in[chosenj][choseni]*scaledup ) );
+			sit->second.set_velocity( Vec<2>( spline2dcalc(velHor_spline, square_lon, square_lat), spline2dcalc(velVert_spline, square_lon, square_lat) ) );
+		}
 
 	}
 
 }
-
 
 int tsunamisquares::World::read_bathymetry_chooser(const std::string &file_name){
 
@@ -2058,22 +2998,23 @@ int tsunamisquares::World::read_bathymetry_txt(const std::string &file_name) {
     desc_line >> num_lats;
     desc_line >> num_lons;
     desc_line >> dlat;
-	desc_line >> dlon;
+    desc_line >> dlon;
     _num_latitudes = num_lats;
     _num_longitudes = num_lons;
     _dlat = dlat;
-	_dlon = dlon;
+    _dlon = dlon;
 
     // Set the number of squares
     num_squares = num_lats*num_lons;
 
     // Read squares, populate world rtree and square map.
+    int k=0;
     for (i=0; i<num_squares; ++i) {
         Square     new_square;
         new_square.set_id(i);
         new_square.read_bathymetry(in_file);
         new_square.set_box(dlon, dlat);
-
+		
         _square_rtree.addPoint(new_square.xy(), new_square.id());
         _squares.insert(std::make_pair(new_square.id(), new_square));
     }
@@ -2099,29 +3040,42 @@ int tsunamisquares::World::read_bathymetry_txt(const std::string &file_name) {
 }
 
 int tsunamisquares::World::read_bathymetry_netCDF(const std::string &file_name) {
+  /*
 	// Clear the world first to avoid incorrectly mixing indices
 	clear();
 
 	// Read in NetCDF
 	NcFile dataFile(file_name, NcFile::read);
 
-	long num_lats = dataFile.getDim("latitude").getSize();
-	long num_lons = dataFile.getDim("longitude").getSize();
+	//long num_lats = dataFile.getDim("latitude").getSize();
+	//long num_lons = dataFile.getDim("longitude").getSize();
+	long num_lats = dataFile.getDim("y").getSize();
+	long num_lons = dataFile.getDim("x").getSize();
 
 	// These will hold our data.
-	float lats_in[num_lats], lons_in[num_lons];
-	float alt_in[num_lats][num_lons];
-
+	//float lats_in[num_lats], lons_in[num_lons];
+	//float alt_in[num_lats][num_lons];
+	
+	float **alt_in = (float **)malloc(num_lats * sizeof(float *));
+	float *lats_in = (float *)malloc(num_lats * sizeof(float));
+	float *lons_in = (float *)malloc(num_lons * sizeof(float));
+	for (int i=0; i<num_lats; i++){
+	  alt_in[i] = (float *)malloc(num_lons * sizeof(float));
+	}
+	
 	// Get the variables
 	NcVar latVar, lonVar;
-	latVar = dataFile.getVar("latitude");
-	lonVar = dataFile.getVar("longitude");
-	latVar.getVar(lats_in);
-	lonVar.getVar(lons_in);
+	//latVar = dataFile.getVar("latitude");
+	//lonVar = dataFile.getVar("longitude");
+	latVar = dataFile.getVar("y");
+	lonVar = dataFile.getVar("x");
+	//latVar.getVar(lats_in);
+	//lonVar.getVar(lons_in);
 
 	NcVar altVar;
-	altVar = dataFile.getVar("altitude");
-	altVar.getVar(alt_in);
+	//altVar = dataFile.getVar("altitude");
+	altVar = dataFile.getVar("z");
+	//altVar.getVar(alt_in);
 
 	// Set metadata
 	float dlat = fabs(lats_in[1]-lats_in[0]);
@@ -2130,7 +3084,7 @@ int tsunamisquares::World::read_bathymetry_netCDF(const std::string &file_name) 
 	_num_longitudes = num_lons;
 	_dlat = dlat;
 	_dlon = dlon;
-
+	
 	// Read squares, populate world rtree and square map.
 	for(int j=0; j<num_lats; j++){
 		for(int i=0; i<num_lons; i++){
@@ -2139,14 +3093,37 @@ int tsunamisquares::World::read_bathymetry_netCDF(const std::string &file_name) 
 
 			// Do all the stuff that Square::read_bathymetry() does
 			LatLonDepth new_lld;
-			new_lld.set_lon(lons_in[i]);
-			new_lld.set_lat(lats_in[j]);
-			new_lld.set_altitude(alt_in[j][i]);
-			new_square.set_lld(new_lld);
+			float *alon;
+			float *alat;
+			float *aalt;
+			std::vector<size_t> v;
+			v.push_back(0);
+			v.push_back(j);
+			v.push_back(i);
+			v.push_back(0);
+			std::cout<<"here"<<std::endl;		
+			lonVar.getVar(v,alon);
+			std::cout<<"here"<<std::endl;		
+			//latVar.getVar(v,alat);
+			//altVar.getVar(v,aalt);
+			std::cout<<*alon<<std::endl;
+			//std::cout<<*alat<<std::endl;
+			//std::cout<<*aalt<<std::endl;
 
+			new_lld.set_lon(*alon);
+			std::cout<<"here"<<std::endl;		
+			new_lld.set_lat(*alat);
+			new_lld.set_altitude(*aalt);
+			//new_lld.set_lon(lons_in[i]);
+			//new_lld.set_lat(lats_in[j]);
+			//new_lld.set_altitude(alt_in[j][i]);
+			new_square.set_lld(new_lld);
+			std::cout<<"here"<<std::endl;		
+			
 			new_square.set_box(dlon, dlat);
 			_square_rtree.addPoint(new_square.xy(), new_square.id());
 			_squares.insert(std::make_pair(new_square.id(), new_square));
+			
 		}
 	}
 
@@ -2164,6 +3141,100 @@ int tsunamisquares::World::read_bathymetry_netCDF(const std::string &file_name) 
 	// Find max depth and min cell spacing
 	calcMinSpacing();
 	calcMaxDepth();
+  */
+  
+	clear();
+
+	NcFile dataFile(file_name, NcFile::read);
+
+	long num_lats = dataFile.getDim("y").getSize();
+	long num_lons = dataFile.getDim("x").getSize();
+	
+	float *lats_in = (float *)malloc(sizeof(float));
+	float *lons_in = (float *)malloc(sizeof(float));
+	float *alt_in = (float *)malloc(sizeof(float));
+
+	NcVar latVar, lonVar, altVar;
+	latVar = dataFile.getVar("y");
+	lonVar = dataFile.getVar("x");
+	altVar = dataFile.getVar("z");
+	
+	// Set metadata
+	std::vector<size_t> v0;
+	v0.push_back(0);
+	v0.push_back(0);
+	std::vector<size_t> v1;
+	v1.push_back(1);
+	v1.push_back(1);
+	float *lat1 = (float *)malloc(sizeof(float));
+	float *lat0 = (float *)malloc(sizeof(float));
+	float *lon1 = (float *)malloc(sizeof(float));
+	float *lon0 = (float *)malloc(sizeof(float));
+	latVar.getVar(v1,lat1);
+	latVar.getVar(v0,lat0);
+	lonVar.getVar(v1,lon1);
+	lonVar.getVar(v0,lon0);
+
+	float dlat = fabs(*lat1-*lat0);
+	float dlon = fabs(*lon1-*lon0);
+	_num_latitudes = num_lats;
+	_num_longitudes = num_lons;
+	_dlat = dlat;
+	_dlon = dlon;
+		
+	int totalsteps = num_lats*num_lons;
+	int currentstep = 0;
+	std::cout<<"total squares: "<<totalsteps<<std::endl;
+	for(int j=0; j<num_lats; j++){
+	  for(int i=0; i<num_lons; i++){
+	    
+	    currentstep = j*num_lons + i;
+	    if(currentstep%((int)(totalsteps/10))==0){
+	      std::cout<<int(100*(float)(currentstep+1)/(float)(totalsteps))<<"%"<<std::endl;
+	    }
+	    
+	    Square     new_square;
+	    new_square.set_id((num_lats-1-j)*num_lons + i);
+		  
+	    LatLonDepth new_lld;
+	    std::vector<size_t> v;
+	    v.push_back(j);
+	    v.push_back(i);
+	    std::vector<size_t> v2;
+	    v2.push_back(i);
+	    v2.push_back(j);
+	    //lonVar.getVar(v2,lons_in);
+	    //latVar.getVar(v,lats_in);
+	    altVar.getVar(v,alt_in);
+	    //new_lld.set_lon(*lons_in);
+	    //new_lld.set_lat(*lats_in);
+	    new_lld.set_lon(*lon0+i*dlon);
+	    new_lld.set_lat(*lat0+j*dlat);
+	    new_lld.set_altitude(*alt_in);
+	    new_square.set_lld(new_lld);
+
+	    new_square.set_box(dlon, dlat);
+	    _square_rtree.addPoint(new_square.xy(), new_square.id());
+	    _squares.insert(std::make_pair(new_square.id(), new_square));
+
+	  }
+	}
+	
+	// Get world lld bounds
+	LatLonDepth     min_latlon, max_latlon;
+	get_bounds(min_latlon, max_latlon);
+	min_latlon.set_altitude(0); //Why is this here?
+	
+	// Keep track of Lat/Lon bounds in the World
+	_min_lat = min_latlon.lat();
+	_min_lon = min_latlon.lon();
+	_max_lat = max_latlon.lat();
+	_max_lon = max_latlon.lon();
+	
+	// Find max depth and min cell spacing
+	calcMinSpacing();
+	calcMaxDepth();
+	assign2DIndeces();
 
 	return 0;
 }
@@ -2377,6 +3448,7 @@ void tsunamisquares::World::deformFromFile_netCDF(const std::string &file_name, 
 	uplift_algarr.setlength(NLON*NLAT);
 	eastU_algarr.setlength(NLON*NLAT);
 	northV_algarr.setlength(NLON*NLAT);
+	std::cout<<NLON<<" "<<NLAT<<std::endl;
 	for(int j=0; j<NLAT; j++){
 		lat_algarr[j] = lats_in[j];
 		for(int i=0; i<NLON; i++){
@@ -2398,19 +3470,40 @@ void tsunamisquares::World::deformFromFile_netCDF(const std::string &file_name, 
 	point_spheq top_left_in, top_right_in, bottom_right_in, bottom_left_in;
 	float minlon = lons_in[0];
 	float maxlon = lons_in[NLON-1];
-	float minlat = lats_in[0];
-	float maxlat = lats_in[NLAT-1];
+	if (minlon>maxlon) {
+	  float dd = maxlon;
+	  float ddd = minlon;
+	  minlon = dd;
+	  maxlon = ddd;
+	}
+	std::cout<<"minlon: "<<minlon<<" maxlon: "<<maxlon<<std::endl;
+	float minlat = lats_in[NLAT-1];
+	float maxlat = lats_in[0];
+	if (minlat>maxlat) {
+	  float dd = maxlat;
+	  float ddd = minlat;
+	  minlat = dd;
+	  maxlat = ddd;
+	}
+	std::cout<<"minlat: "<<minlat<<" maxlat: "<<maxlat<<std::endl;
 	top_left_in = point_spheq(minlon, maxlat);
 	top_right_in = point_spheq(maxlon, maxlat);
 	bottom_right_in = point_spheq(maxlon, minlat);
 	bottom_left_in = point_spheq(minlon, minlat);
+	std::vector<double> boundaries = {minlon,maxlon,minlat,maxlat};
+	//std::cout<<boundaries<<std::endl;
 
-	point_spheq ring_verts[5] = {bottom_left_in, top_left_in, top_right_in, bottom_right_in, bottom_left_in};
+	point_spheq ring_verts[9] = {bottom_left_in, point_spheq(minlon,(minlat+maxlat)/2), top_left_in, point_spheq((minlon+maxlon)/2,maxlat), top_right_in, point_spheq(maxlon,(minlat+maxlat)/2), bottom_right_in, point_spheq((minlon+maxlon)/2,minlat), bottom_left_in};
+	//point_spheq ring_verts[24] = {point_spheq(-5,-60),point_spheq(-5,-40),point_spheq(-5,-20),point_spheq(-5,0),point_spheq(-5,20),point_spheq(-5,40),point_spheq(-5,60),point_spheq(-4,60),point_spheq(-3,60),point_spheq(-2,60),point_spheq(-1,60),point_spheq(0,60),point_spheq(1,60),point_spheq(2,60),point_spheq(3,60),point_spheq(4,60),point_spheq(5,60),point_spheq(5,40),point_spheq(5,20),point_spheq(5,0),point_spheq(5,-20),point_spheq(5,-40),point_spheq(5,-60),point_spheq(-5,-60)};
+	//point_spheq ring_verts[5] = {bottom_left_in, top_left_in, top_right_in, bottom_left_in};
+	
 	ring_spheq new_ring;
 	bg::assign_points(new_ring, ring_verts);
 	SquareIDSet intersected_squares;
-	intersected_squares = _square_rtree.getRingIntersects(new_ring);
-
+	//intersected_squares = _square_rtree.getRingIntersects(new_ring);
+	intersected_squares = _square_rtree.getIntersectsManual(boundaries);
+	std::cout<<"intersected squares: "<<intersected_squares.size()<<std::endl;
+	std::cout<<boost::geometry::dsv(new_ring)<<std::endl;
 
 	// for squares in the subset grabbed by rtree search, set values to those from input
 	SquareIDSet::const_iterator sidit;
@@ -2418,12 +3511,17 @@ void tsunamisquares::World::deformFromFile_netCDF(const std::string &file_name, 
 		std::map<UIndex, Square>::iterator sit = _squares.find(*sidit);
 		float square_lon = sit->second.xy()[0];
 		float square_lat = sit->second.xy()[1];
+		///std::cout<<square_lon<<" "<<square_lat<<std::endl;
 
 		LatLonDepth new_lld = sit->second.lld();
 		new_lld.set_altitude( new_lld.altitude() + spline2dcalc(uplift_spline, square_lon, square_lat) );
+	        //if (spline2dcalc(uplift_spline, square_lon, square_lat)!=0) {std::cout<<spline2dcalc(uplift_spline, square_lon, square_lat)<<std::endl;}
+		//std::cout<<square_lon<<" "<<square_lat<<std::endl;
 		sit->second.set_lld(new_lld);
 
 	}
+	std::cout<<"intersected squares: "<<intersected_squares.size()<<std::endl;
+										
 
 	return;
 }

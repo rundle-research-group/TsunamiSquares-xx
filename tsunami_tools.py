@@ -21,6 +21,10 @@ import read_ETOPO1
 import pandas as pd
 import json
 import itertools
+import csv
+from numpy import transpose
+import warnings
+import math
 #import quakelib
 
 # --------------------------------------------------------------------------------
@@ -48,8 +52,20 @@ class simAnalyzer:
         alt_ncVar = self.sim_data.variables['altitude']
         
         # Calculate locations where we simulated ocean runup
-        ever_has_water = np.any(height_ncVar, axis=0)
-        self.sim_inundation_array = np.ma.masked_where(alt_ncVar[0] < 0, ever_has_water)
+        height_cut = np.copy(height_ncVar)
+        height_cut = [x>0.00 for x in height_ncVar]
+        ever_has_water = np.any(height_cut, axis=0)
+        """
+        max_heights = np.zeros_like(height_ncVar)[0]
+        for i in range(len(height_ncVar[0,:,0])):
+            print(i)
+            for j in range(len(height_ncVar[0,0,:])):
+                max_heights[i,j] = np.amax(height_ncVar[0,i,j])
+        """
+        max_heights = np.amax(height_ncVar, axis=0)
+        #ever_has_water = np.any(height_ncVar, axis=0)
+        #self.sim_inundation_array = np.ma.masked_where(alt_ncVar[0] < 0, ever_has_water)
+        self.sim_inundation_array = np.ma.masked_where(alt_ncVar[0] < 0, max_heights)
         
         
     def make_grid_animation(self, FPS, DPI, skip_frames=1, zminmax=None, doBasemap=False):
@@ -131,6 +147,105 @@ class simAnalyzer:
                 # Plot the surface for this time step
                 if surface is None:
                     ax.imshow(masked_data, cmap=cmap, norm=norm, extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='none')
+                else:
+                    surface.set_data(masked_data)
+                    
+                # Text box with the time
+                plt.figtext(0.02, 0.5, 'Time: {:02d}:{:02d}'.format(int(time/60), int(time%60)), bbox={'facecolor':'yellow', 'pad':5})
+                
+                writer.grab_frame()
+
+
+    def make_grid_animation_inundation(self, FPS, DPI, skip_frames=1, zminmax=None, doBasemap=False):
+        
+        save_file = self.save_file_prefix+"_grid.mp4"
+        
+        # Keep the data from each time step in netCDF variable form, and slice into it as needed
+        level_ncVar = self.sim_data.variables['level']
+        height_ncVar = self.sim_data.variables['height']
+        alt_ncVar = self.sim_data.variables['altitude']
+        
+        # Get ranges
+        N_STEP = len(self.times)
+        z_min =  np.inf
+        z_max = -np.inf
+        z_avs = []
+        for i, levelstep in enumerate(level_ncVar):
+            masked_data = np.ma.masked_where(height_ncVar[i] == 0.0000, levelstep)  
+            z_min = min(masked_data.min(), z_min)
+            z_max = max(masked_data.max(), z_max)
+            z_avs.append(masked_data.mean())
+        
+        z_max = np.max(np.ma.masked_where(height_ncVar[0] == 0.0000, level_ncVar[0]))    
+        
+        print("min: {}, max: {}, av: {}".format(z_min, z_max, np.array(z_avs).mean()))
+        if(zminmax != None): z_min,z_max = zminmax
+    
+        # Initialize movie writing stuff
+        FFMpegWriter = manimation.writers['ffmpeg']
+        metadata = dict(title='TsunamiSquares', artist='Matplotlib', comment='Animation')
+        writer = FFMpegWriter(fps=FPS, metadata=metadata, bitrate=1000)
+    
+        # Initialize the frame and axes
+        fig = plt.figure()
+        
+        if not doBasemap:
+            ax = fig.add_subplot(111)
+            plt.xlim(self.minlon, self.maxlon)
+            plt.ylim(self.minlat, self.maxlat)
+            #ax.get_xaxis().get_major_formatter().set_useOffset(False)
+            #ax.get_yaxis().get_major_formatter().set_useOffset(False)
+        else:
+            m = Basemap(projection='cyl', llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
+                        llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='h')
+            m.drawmeridians(np.linspace(self.minlon, self.maxlon, num=5.0), labels=[0,0,0,1], linewidth=0)
+            m.drawparallels(np.linspace(self.minlat, self.maxlat, num=5.0), labels=[1,0,0,0], linewidth=0)
+            m.drawcoastlines(linewidth=50.5)
+            m.ax = fig.add_subplot(111)
+            ax = m.ax
+        
+        # Colorbar
+        #cmap = plt.get_cmap('rainbow')
+        #cmap = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['blue','deepskyblue','yellow','orange','red'], N=5)
+        cmap = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['forestgreen','yellow','orange','red'])
+        cmap2 = mcolor.LinearSegmentedColormap.from_list("custom_cmap", ["mediumblue","cornflowerblue"])
+        landcolor = 'forestgreen'#'black'#'#FFFFCC'
+        cmap.set_bad(landcolor, 1.0)
+        
+        norm = mcolor.Normalize(vmin=0.0, vmax=10.0)
+        norm2 = mcolor.Normalize(vmin=-5.0, vmax=5.0)
+        divider = make_axes_locatable(ax)
+        cbar_ax = divider.append_axes("right", size="5%",pad=0.05)
+        
+        cb = mcolorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norm)
+        framelabelfont = mfont.FontProperties(style='normal', variant='normal', size=14)
+        #cbar = fig.colorbar(cbar_ax, ticks=[0., 5/6., 10/6., 15/6., 20/6., 25/6., 30/6]) #on the edges
+        #cbar.ax.set_yticklabels(['0','4cm','2m','4m','6m','8m','>8m']) #on the edges
+        plt.figtext(0.95, 0.7, r'water altitude $[m]$', rotation='vertical', fontproperties=framelabelfont)
+    
+        surface = None
+        with writer.saving(fig, save_file, DPI):
+            for ind in range(int(N_STEP/skip_frames)):
+                index = ind*skip_frames
+                # Get the subset of data corresponding to current time
+                this_level  = level_ncVar[index]
+                this_height = height_ncVar[index]
+                this_alt    = alt_ncVar[index]
+                time        = self.times[index]
+                
+                # Masked array via conditional, don't color the land unless it has water on it
+                #masked_data = np.ma.masked_where(this_height == 0.0000, this_level)
+                masked_data = np.ma.masked_where(alt_ncVar[0]<0, this_height)
+                masked_data = np.ma.masked_where(self.sim_inundation_array<0.1, masked_data)
+                ocean_only = np.ma.masked_where(alt_ncVar[0]>0, this_level)
+
+                
+                print("step: {}  time: {}".format(index, time))
+    
+                # Plot the surface for this time step
+                if surface is None:
+                    ax.imshow(masked_data, cmap=cmap, norm=norm, extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='none')
+                    ax.imshow(ocean_only, cmap=cmap2, norm=norm2, extent=[self.minlon, self.maxlon, self.minlat, self.maxlat], interpolation='none')
                 else:
                     surface.set_data(masked_data)
                     
@@ -220,23 +335,48 @@ class simAnalyzer:
         self.fill_bool = fill_bool
         
         print("Loading historical runup for simulation region...")
-        
-        inund_df = pd.read_csv(csv_file_path, sep='\t')
 
-        inund_df = inund_df[inund_df.LATITUDE.notnull()]
-        inund_df = inund_df[inund_df.LONGITUDE.notnull()]
-        inund_df = inund_df[inund_df.HORIZONTAL_INUNDATION.notnull()]
+        yearr = []
+        monthh = []
+        dayy = []
+        statee = []
+        latt = []
+        lonn = []
+        inund = []
+        with open(csv_file_path) as csvfile:
+            line = list(csv.reader(csvfile,delimiter="\t"))
+            for k in range(len(line)):
+                if k>0:
+                    if line[k][2]!="" and line[k][3]!="" and line[k][4]!="" and line[k][12]!="" and line[k][13]!="" and line[k][21]!="":
+                        yearr.append(float(line[k][2]))
+                        monthh.append(float(line[k][3]))
+                        dayy.append(float(line[k][4]))
+                        statee.append(line[k][10])
+                        latt.append(float(line[k][12]))
+                        lonn.append(float(line[k][13]))
+                        inund.append(float(line[k][21]))
+
+        dd = {"STATE": statee, "YEAR": yearr, "MONTH": monthh, "DAY": dayy, "LATITUDE": latt, "LONGITUDE": lonn, "HORIZONTAL_INUNDATION": inund}
+        inund_df = pd.DataFrame(data=dd)
+        
+        #inund_df = pd.read_csv(csv_file_path, sep='\t')
+        #inund_df = inund_df[inund_df.LATITUDE.notnull()]
+        #inund_df = inund_df[inund_df.LONGITUDE.notnull()]
+        #inund_df = inund_df[inund_df.HORIZONTAL_INUNDATION.notnull()]
         
         self.inund_df = inund_df[((inund_df.YEAR == year) & (inund_df.MONTH == month) & (inund_df.DAY == day) &
                                  (inund_df.LATITUDE >= self.minlat) & (inund_df.LATITUDE <= self.maxlat) &
                                  (inund_df.LONGITUDE >= self.minlon) & (inund_df.LONGITUDE <= self.maxlon) &
-                                 (inund_df.HORIZONTAL_INUNDATION > 0))]
+                                 (inund_df.HORIZONTAL_INUNDATION > 0.0))] #WAS > 0
         
         # Now create an array to match the simulated inundation array showing observed inundations
-        obs_histogram, xedge, yedge = np.histogram2d(inund_df.LONGITUDE, inund_df.LATITUDE, bins=[len(self.lons), len(self.lats)], 
+        obs_histogram, xedge, yedge = np.histogram2d(self.inund_df.LONGITUDE, self.inund_df.LATITUDE, bins=[len(self.lons), len(self.lats)], 
                                                           range=[[self.minlon-self.dlon/2.0, self.maxlon+self.dlon/2.0], [self.minlat-self.dlat/2.0, self.maxlat+self.dlat/2.0]])
-        
 
+        
+        self.obss = obs_histogram
+        self.lonnn = xedge
+        self.lattt = yedge
         
         #TODO: figure out right orientation of array obs_histogram
         obs_histogram = np.flipud(obs_histogram.T)
@@ -283,8 +423,9 @@ class simAnalyzer:
                             filled_array[j+vert_ind_mod][i+horiz_ind_mod] = 1
         return filled_array
                     
-        
-    def compare_sim_and_obs_runup(self):
+    
+    #VERSION compares the points individually
+    def compare_sim_and_obs_runup1(self):
         
         print("Comparing simulation inundation and observation...")
         
@@ -292,10 +433,13 @@ class simAnalyzer:
         all_inundation_results[np.logical_and(self.sim_inundation_array==0, self.obs_inundation_array==1)] = 1
         all_inundation_results[np.logical_and(self.sim_inundation_array==1, self.obs_inundation_array==0)] = 2
         all_inundation_results[np.logical_and(self.sim_inundation_array==1, self.obs_inundation_array==1)] = 3
-        
+        #all_inundation_results[np.logical_and(True, self.obs_inundation_array==1)] = 3
+
         hits = np.count_nonzero(all_inundation_results==3)
         misses = np.count_nonzero(all_inundation_results==1)
         falses = np.count_nonzero(all_inundation_results==2)
+        
+        print(hits,misses,falses)
         
         alt_ncVar = self.sim_data.variables['altitude']
         self.all_inundation_results = np.ma.masked_where(alt_ncVar[0]<0, all_inundation_results)
@@ -306,7 +450,7 @@ class simAnalyzer:
         plt.sca(ax1)
         plt.title("Comparison of Simulated \n and Observed Inundation")
         m = Basemap(projection='cyl',llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
-                    llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='i')
+                    llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='h')
         #m.drawcoastlines(linewidth=0.5)
         
         cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['gray', 'maroon', 'blue', 'lime'], N=4)
@@ -339,7 +483,222 @@ class simAnalyzer:
         
         fill_suffix = ''
         if self.fill_bool: fill_suffix = '_filled'
-        plt.savefig(self.save_file_prefix+'_inundation{}.png'.format(fill_suffix), dpi=100)
+        plt.savefig(self.save_file_prefix+'_inundation{}.png'.format(fill_suffix), dpi=1000)
+    
+
+    #VERSION where it creates a plot of the maximum runups on land
+    def compare_sim_and_obs_runup(self):
+        
+        print("Comparing simulation inundation and observation...")
+        np.ma.set_fill_value(self.sim_inundation_array,-1)
+
+        warnings.filterwarnings("ignore")
+        
+        self.sim_inundation_array.filled(fill_value=-1)
+        simasdf = np.zeros((len(self.sim_inundation_array),len(self.sim_inundation_array[0])))
+        for i in range(len(simasdf)):
+            for j in range(len(simasdf[0])):
+                simasdf[i][j] = self.sim_inundation_array[i][j]
+                if math.isnan(simasdf[i][j]):
+                    simasdf[i][j] = -1
+        print(simasdf)
+
+        all_inundation_results = np.zeros_like(self.sim_inundation_array.astype(int))
+        all_inundation_results[np.logical_and(simasdf>0.04, simasdf<=2.0)] = 1
+        all_inundation_results[simasdf>2.0] = 2
+        all_inundation_results[simasdf>4.0] = 3
+        all_inundation_results[simasdf>6.0] = 4
+        all_inundation_results[simasdf>8.0] = 5
+
+        alt_ncVar = self.sim_data.variables['altitude']
+        self.all_inundation_results = np.ma.masked_where(alt_ncVar[0]<0, all_inundation_results)
+                                       
+        d1 = np.count_nonzero(all_inundation_results==1)
+        d2 = np.count_nonzero(all_inundation_results==2)
+        d3 = np.count_nonzero(all_inundation_results==3)
+        d4 = np.count_nonzero(all_inundation_results==4)
+        d5 = np.count_nonzero(all_inundation_results==5)
+
+        print(d1,d2,d3,d4,d5)
+        
+        plt.close(1)
+        #fig, (ax0,ax1) = plt.subplots(1, 2, gridspec_kw = {'width_ratios':[1, 3]})
+        fig = plt.figure()
+        
+        #plt.sca(ax1)
+        plt.title("Simulated Inundation")
+        m = Basemap(projection='cyl',llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
+                    llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='h')
+        #m.drawcoastlines(linewidth=0.5)
+        
+        cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['gray','blue','deepskyblue','yellow','orange','red'], N=6)
+#        cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['white', 'gray', 'maroon', 'blue', 'lime'], N=5)
+        
+        map_ax = m.imshow(self.all_inundation_results, origin='upper', extent=[self.minlon, self.maxlon, self.maxlat, self.minlat], interpolation='nearest', cmap=cm)
+        
+        #cbar = fig.colorbar(map_ax, ticks=[3/7., 9/7., 15/7., 21/7., 27/7., 33/7.]) #in the middle
+        cbar = fig.colorbar(map_ax, ticks=[0., 5/6., 10/6., 15/6., 20/6., 25/6., 30/6]) #on the edges
+#        cbar = fig.colorbar(map_ax, ticks=[3/10., 9/10., 15/10., 21/10., 27/10.])
+        #cbar.ax.set_yticklabels(['Dry','0-2 meters','2-4 meters','4-6 meters','6-8 meters','8-10 meters']) #in the middle
+        cbar.ax.set_yticklabels(['0','4cm','2m','4m','6m','8m','>8m']) #on the edges
+
+        #precision = hits/(hits + misses)
+        #recall = hits/(hits + falses)
+        #plt.sca(ax0)
+        #bgraph0 = ax0.bar([1.5 , 2.5], [d1, d2], width=0.8)
+        #bgraph1 = ax0.bar([1.5], [d1], bottom=[d1], width=0.8)
+        #ax0.set_xticks([1.5, 2.5], minor=False)
+        #ax0.set_xticklabels(["Observed\nInundation", "False\nAlarm"], minor=False)
+        #plt.ylabel("Number of Cells")
+        
+        #bgraph0[0].set_color('lime')
+        #bgraph0[1].set_color('blue')
+        #bgraph1[0].set_color('maroon')
+        
+        #ax1.annotate('Precision: {:0.3f}\nRecall:      {:0.3f}'.format(100*precision, 100*recall), (self.meanlon, self.minlat+self.latrange*0.2))
+                     #xytext=(0.8, 0.95), textcoords='axes fraction',
+                     #horizontalalignment='right', verticalalignment='top')
+        
+        plt.tight_layout()
+        
+        fill_suffix = ''
+        if self.fill_bool: fill_suffix = '_filled'
+        plt.savefig(self.save_file_prefix+'_inundation{}.png'.format(fill_suffix), dpi=1000)
+
+    #VERSION prints out runup comparisons
+    def compare_sim_and_obs_runup_max(self):
+        
+        print("Comparing simulation inundation and observation...")
+        
+        self.obss = transpose(self.obss)
+        self.obss = self.obss[::-1]
+        alt_ncVar = self.sim_data.variables['altitude']
+        self.obss = np.ma.masked_where(alt_ncVar[0]<0,self.obss)
+        self.sim_inundation_array.filled(fill_value=-1)
+        self.obss.filled(fill_value=-1)
+        
+        all_inundation_results = np.zeros_like(self.sim_inundation_array.astype(int))
+        #all_inundation_results[np.logical_and(True,True)]=1
+        #all_inundation_results[np.logical_and(self.obss>0, True)] = 1
+        #all_inundation_results[np.logical_and(self.sim_inundation_array>0,True)] = 1
+        all_inundation_results[np.logical_and(self.obss>0,self.sim_inundation_array<=0.1)] = 2
+        all_inundation_results[np.logical_and(self.obss>0,self.sim_inundation_array>0.1)] = 1
+
+        self.all_inundation_results = np.ma.masked_where(alt_ncVar[0]<0, all_inundation_results)
+        #self.all_inundation_results = all_inundation_results
+
+        d1 = np.count_nonzero(self.all_inundation_results==1) #hit by both the sim and obs
+        d2 = np.count_nonzero(self.all_inundation_results==2) #hit by only the obs
+        d3 = d1 + d2
+        print(d1,d2,d3,float(d1)/float(d3))
+        
+        inn = self.inund_df.HORIZONTAL_INUNDATION
+        latt = self.inund_df.LATITUDE
+        lonn = self.inund_df.LONGITUDE
+        simm = self.sim_inundation_array[::-1]
+        simlat = self.lattt
+        simlon = self.lonnn
+        
+        comparison = []
+        for ii in range(len(inn)):
+            if inn.iloc[ii]>0.1:
+                lattindex = 0
+                lonnindex = 0
+                lattdiff = 1000
+                lonndiff = 1000
+                for jj in range(len(simlat)):
+                    if lattdiff>abs(simlat[jj]-latt.iloc[ii]):
+                        lattdiff = abs(simlat[jj]-latt.iloc[ii])
+                        lattindex = jj
+                for kk in range(len(simlon)):
+                    if lonndiff>abs(simlon[kk]-lonn.iloc[ii]):
+                        lonndiff = abs(simlon[kk]-lonn.iloc[ii])
+                        lonnindex = kk
+                if simm[lattindex,lonnindex]>0.1:
+                    print(inn.iloc[ii],simm[lattindex,lonnindex])
+                    comparison.append([inn.iloc[ii],simm[lattindex,lonnindex]])
+        
+        plt.close(1)
+        fig = plt.figure()
+        
+        plt.title("Simulated Inundation")
+        m = Basemap(projection='cyl',llcrnrlat=self.minlat, urcrnrlat=self.maxlat,
+                    llcrnrlon=self.minlon, urcrnrlon=self.maxlon, lat_0=self.meanlat, lon_0=self.meanlon, resolution='h')
+        
+        cm = mcolor.LinearSegmentedColormap.from_list('custom_cmap', ['gray','green','red'], N=3)
+        map_ax = m.imshow(self.all_inundation_results, origin='upper', extent=[self.minlon, self.maxlon, self.maxlat, self.minlat], interpolation='nearest', cmap=cm)
+        plt.tight_layout()
+        
+        fill_suffix = ''
+        if self.fill_bool: fill_suffix = '_filled'
+        plt.savefig(self.save_file_prefix+'_comparison{}.png'.format(fill_suffix), dpi=1000)
+        print(self.save_file_prefix+'_comparison{}.png'.format(fill_suffix))
+        plt.close()
+        
+        print("Total observed points: "+str(len(inn)))
+        
+        totalpercent = 0
+        totaldiff = 0
+        maxobs = 0
+        maxsim = 0
+        difference = np.zeros(len(comparison))
+        percentdiffa = np.zeros(len(comparison))
+        percentdiff = np.zeros(len(comparison))
+        for i in range(len(comparison)):
+            difference[i] = comparison[i][1]-comparison[i][0]
+            percentdiffa[i] = 100*abs((comparison[i][1]-comparison[i][0])/(comparison[i][0]))
+            percentdiff[i] = 100*(comparison[i][1]-comparison[i][0])/(comparison[i][0])
+            totaldiff += difference[i]
+            totalpercent+=abs((comparison[i][1]-comparison[i][0])/(comparison[i][0]))
+            if (comparison[i][0]>maxobs):
+                maxobs = comparison[i][0]
+            if (comparison[i][1]>maxsim):
+                maxsim = comparison[i][1]
+
+        #plot of vertical view of inundation
+        y = []
+        x = []
+        for i in range(len(simm)):
+            y.append(np.amax(simm[i]))
+            x.append(simlat[i])
+        
+        print("Average Percent Error: "+str(totalpercent/len(comparison)))
+        print("Average Absolute Error: "+str(totaldiff/float(len(comparison))))
+        print("Percent of observed hit: "+str(float(d1)/float(d3)))
+        print("Max Sim Runup: "+str(maxsim))
+        print("Max Obs Runup: "+str(maxobs))
+        
+        fig = plt.figure()
+        plt.hist(difference, bins=50, range=[-15,15])
+        plt.title("Inundation Height Absolute Error")
+        plt.xlabel("Height Difference (m)")
+        plt.ylabel("Counts")
+        plt.savefig(self.save_file_prefix+"_diffhist.png",dpi=1000)
+        print(self.save_file_prefix+"_diffhist.png")
+        plt.close()
+        
+        fig = plt.figure()
+        plt.hist(percentdiffa, bins=25, range=[0,400])
+        plt.title("Inundation Height Percent Error")
+        plt.xlabel("Percent Error (%)")
+        plt.ylabel("Counts")
+        plt.savefig(self.save_file_prefix+"_perahist.png",dpi=1000)
+        print(self.save_file_prefix+"_perahist.png")
+        plt.close()
+        
+        fig = plt.figure()
+        plt.hist(percentdiff, bins=50, range=[-400,400])
+        plt.savefig(self.save_file_prefix+"_perhist.png",dpi=1000)
+        print(self.save_file_prefix+"_dperhist.png")
+        plt.close()
+
+        fig = plt.figure()
+        plt.plot(latt,inn,c='r',marker='o',ms=2,lw=0)
+        plt.plot(x,y,'b')
+        plt.savefig(self.save_file_prefix+"_sideview.png",dpi=1000)
+        print(self.save_file_prefix+"_sideview.png")
+        plt.show()
+        plt.close()
         
 
 def analyticGaussPileIntegrand(k, r, t, Dc, Rc, depth):
@@ -788,7 +1147,7 @@ if __name__ == "__main__":
     parser_gen.add_argument('--info_file', required=True, help='json containing regional and earthquake information')  
     parser_gen.add_argument('--etopo1_file', required=False, default="~/Tsunami/ETOPO1/ETOPO1_Ice_g_gmt4.grd",
                             help="NOAA ETOPO1 combined topography and bathymetry file path")
-    parser_gen.add_argument('--resolution', type=int, required=False, default=1,
+    parser_gen.add_argument('--resolution', type=float, required=False, default=1,
                             help="Resolution interpolation multiplier for NOAA topography")
     parser_gen.add_argument('--text', action="store_true", required=False,
                             help="Store bathymetry as a text lld file")
@@ -889,7 +1248,7 @@ if __name__ == "__main__":
         with open(args.info_file, "r") as open_info_file:
             region_info = json.load(open_info_file)          
         
-        VQ_DIR = "~/VirtQuake/"
+        VQ_DIR = "~/"
         
         system_command = "python "+VQ_DIR+"vq/PyVQ/pyvq/pyvq.py --field_eval --netCDF --horizontal --model_file {} --lld_file {}".format(region_info['model_file'], args.lld_file)
         
@@ -937,7 +1296,7 @@ if __name__ == "__main__":
             if args.type == 'grid':
                 #zminmax = (-1,1)#(-sim_data['z'].std(), sim_data['z'].std())
                 # Makes animation
-                this_sim.make_grid_animation(args.fps, args.dpi, skip_frames = args.skip_frames, zminmax = args.zminmax, doBasemap = args.use_basemap)
+                this_sim.make_grid_animation_inundation(args.fps, args.dpi, skip_frames = args.skip_frames, zminmax = args.zminmax, doBasemap = args.use_basemap)
             
             if args.type == 'xsection':
                 this_sim.make_crosssection_animation(args.fps, args.dpi)

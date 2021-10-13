@@ -81,8 +81,6 @@ namespace tsunamisquares {
             std::vector<bool>         _invalid_directions;
 
             unsigned int			  _blocks_from_edge;
-	    unsigned int                          _blocks_from_edgex;
-	    unsigned int                          _blocks_from_edgey;
 
             unsigned int		      _2Dindeces[2];
 
@@ -254,27 +252,10 @@ namespace tsunamisquares {
             unsigned int blocks_from_edge(void) const{
             	return _blocks_from_edge;
             }
-	    
-            unsigned int blocks_from_edgex(void) const{
-            	return _blocks_from_edgex;
-            }
-	    
-            unsigned int blocks_from_edgey(void) const{
-            	return _blocks_from_edgey;
-            }
 
             void set_blocks_from_edge(const unsigned int &new_blocks_from_edge) {
-	      _blocks_from_edge = new_blocks_from_edge;
+            	_blocks_from_edge = new_blocks_from_edge;
             }
-	    
-	    void set_blocks_from_edgex(const unsigned int &new_blocks_from_edge) {
-	      _blocks_from_edgex = new_blocks_from_edge;
-            }
-			
-            void set_blocks_from_edgey(const unsigned int &new_blocks_from_edge) {
-	      _blocks_from_edgey = new_blocks_from_edge;
-            }
-
 
             unsigned int xind(void){
             	return _2Dindeces[0];
@@ -465,12 +446,7 @@ namespace tsunamisquares {
 	double apply_diffusion(std::map<UIndex, Square>::iterator& sit);
 
         public:
-	    double prevenergy;
-	    double beforemoveE;
-	    double startenergy;
-	    double newPE;
-	    double newKE;
-	    double dtt;
+
 	
             Square &new_square(void);
             
@@ -556,7 +532,6 @@ namespace tsunamisquares {
             void indexNeighbors();
             void computeNeighbors(void);
             void computeNeighborCoords(void);
-	    void smoothBathymetry(void);
             void assign2DIndeces(void);
             void fillToSeaLevel(void);
             void moveSquares(const double dt, const bool accel_bool, const bool doPlaneFit, const bool absorbing_boundaries, const double accel_multiplier, const double friction_multiplier);
@@ -575,10 +550,8 @@ namespace tsunamisquares {
             void flattenBottom(const double &depth);
             void bumpCenter(const double bump_height);
             void gaussianPile(const double hgauss, const double std);
-            void gaussianPosNeg(const double hgauss, const double std);
 	    void gaussianStrip(const double hgauss, const double std);
- 	    void soliton(const double hgauss);
-	    void calcMaxDepth(void);
+            void calcMaxDepth(void);
             Vec<2> centralLoc(void);
             void calcMinSpacing(void);
             void calcMaxOverlapError();

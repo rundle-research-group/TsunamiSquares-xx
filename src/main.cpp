@@ -1,4 +1,4 @@
-// Copyright (c) 2017 John M. Wilson, Kasey W. Schultz
+// Copyright (c) 2015-2019 John M. Wilson, Kasey W. Schultz
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -121,6 +121,17 @@ int main (int argc, char **argv) {
 	// Use absorbing boundary conditions to avoid reflections off simulation boundaries
 	bool    absorbing_boundaries            = atof(param_values["absorbing_boundaries"].c_str());
 
+	// Multiplicative prefactor for gravitational acceleration and max velocity
+	double    accel_multiplier = atof(param_values["accel_multiplier"].c_str());
+
+	// Multiplicative prefactor for negative friction
+	double    friction_multiplier = atof(param_values["friction_multiplier"].c_str());
+
+	//selects whether or not you apply velocity scaling based energy conservation
+	bool conserve_energy = atof(param_values["conserve_energy"].c_str());
+
+
+
 
 	omp_set_num_threads(num_threads);
     
@@ -136,6 +147,7 @@ int main (int argc, char **argv) {
 	if(flatten_bool){
 		std::cout << "Flattening the bottom..."<< std::endl;
 		this_world.flattenBottom(flat_depth);
+		this_world.calcMaxDepth();
 	}
 
     // Index the neighbors by left/right/top etc.
@@ -155,9 +167,12 @@ int main (int argc, char **argv) {
 	initial_conds["eq"] = 1;
 	initial_conds["bump"] = 2;
 	initial_conds["gauss"]= 3;
+	initial_conds["gaussStrip"]= 5;
+	initial_conds["gaussPosNeg"]= 7;
+	initial_conds["soliton"]= 6;
 	initial_conds["saved"]= 4;
 	switch(initial_conds[initial_conditions]){
-		case 1: std::cout << "Deforming from file" << std::endl;
+	        case 1: std::cout << "Deforming from file" << std::endl;
 			       //this_world.deformFromFile_txt(deformation_file);
 			       this_world.deformFromFile_netCDF(deformation_file, eq_height_multiplier);
 			       break;
@@ -169,6 +184,15 @@ int main (int argc, char **argv) {
 				break;
 		case 4: std::cout << "Reading initial conditions from saved state file" << std::endl;
 				this_world.read_sim_state_netCDF(initialstate_file_name);
+				break;
+	        case 5: std::cout << "Accumulating gaussian strip... " << std::endl;
+				this_world.gaussianStrip(gauss_height, gauss_std);
+				break;
+	        case 6: std::cout << "Accumulating soliton... " << std::endl;
+				this_world.soliton(gauss_height);
+				break;
+	        case 7: std::cout << "Accumulating positive and negative gaussian strip... " << std::endl;
+				this_world.gaussianPosNeg(gauss_height, gauss_std);
 				break;
 		default: std::cout << "Initial conditions didn't match any known.  Exiting" << std::endl;
 				 return 0;
@@ -184,17 +208,15 @@ int main (int argc, char **argv) {
     // Compute the time step given the diffusion constant D
     //double dt = (double) (int) this_world.square(0).Lx()*this_world.square(0).Ly()/(2*D); //seconds
     // Use file-provided time step, Check time step for minimum against shallow water wave speed.
-	double dt;
-    double wave_speed = sqrt(abs(G*this_world.max_depth()));
+    double dt;
+    double wave_speed = sqrt(abs(accel_multiplier*G*this_world.max_depth()));
     double maxDt = this_world.min_spacing() / wave_speed;
 
-    if(dt_param > maxDt){
-    	dt = maxDt;
-    	std::cout << "Using maximum time step of " << dt <<" seconds..." << std::endl;
-    }else{
-    	dt = dt_param;
-    	std::cout << "Using provided time step of " << dt <<" seconds..." << std::endl;
-    }
+    dt = dt_param;
+
+    std::cout<<"Max time step: "<<maxDt<<std::endl;
+    std::cout<<"Used time step: "<<dt<<std::endl;
+    std::cout<<"Ratio: "<<dt/maxDt<<std::endl;
 
     // Gather model information
     this_world.info();
@@ -227,15 +249,26 @@ int main (int argc, char **argv) {
     // --------------------------------------------------------------------------------//
     start = omp_get_wtime();
     bool isHealthy = true;
-    std::cout << "Moving squares....time_step=" <<dt << "...";
+    std::cout << "Moving squares....time_step=" <<dt <<"...";
+    std::cout<<"INITIAL ENERGY: "<<std::endl;
+    this_world.computeenergy(true);
+    this_world.startenergy = this_world.prevenergy;
+    this_world.dtt = dt;
+
+    for(int i=0; i<0; i++){
+      std::cout<<i<<std::endl;
+      this_world.diffuseSquaresWard(ndiffusions, absorbing_boundaries, true);
+    }
+
     while (time < max_time) {
         // If this is a writing step, print status
         if (current_step%update_step == 0) {
-            std::cout << ".." << current_step << "/"<<N_steps << "..";
+            std::cout << ".." << current_step <<"/"<<N_steps << "..";
             std::cout << std::flush;
         }
+	
         // Check sim health, exit if there are NaNs or Infs floating around
-        if(check_sim_health){
+        if(check_sim_health){	  
         	isHealthy = this_world.checkSimHealth();
         	if(!isHealthy) break;
         }
@@ -247,18 +280,20 @@ int main (int argc, char **argv) {
             //}
         	this_world.append_netCDF_file(out_file_name, current_step, time);
         }
-
         // Move the squares
         if(move_bool) {
-        	this_world.moveSquares(dt, accel_bool, doPlaneFit, absorbing_boundaries);
+	  this_world.moveSquares(dt, accel_bool, doPlaneFit, absorbing_boundaries, accel_multiplier, friction_multiplier);
         }
 
+	this_world.computeenergy(false);
+	
         // Diffuse (smooth) the squares
-        if(diffuse_bool) {
-			//this_world.diffuseSquaresSchultz(dt, D);
-			this_world.diffuseSquaresWard(ndiffusions, absorbing_boundaries);
+        if(diffuse_bool && current_step!=0) {
+	  //this_world.diffuseSquaresSchultz(dt, D);
+	  this_world.diffuseSquaresWard(ndiffusions, absorbing_boundaries, conserve_energy);
         }
 
+	this_world.computeenergy(true);
 
         // Increment time
         time += dt;
